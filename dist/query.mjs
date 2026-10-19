@@ -106,16 +106,13 @@ export function presetRange(dates, count = 0, today = shanghaiToday()) {
   return { from: from < '2026-01-01' ? '2026-01-01' : from, to };
 }
 
-export function filterRows(rows, tab = 'all') {
-  if (tab === 'warning') return rows.filter(row => row.hasZeroWarning);
-  if (tab === 'missing') return rows.filter(row => row.recorded === 0);
-  return rows;
-}
-
-export function tabCounts(rows) {
-  return {
-    all: rows.length,
-    warning: rows.filter(row => row.hasZeroWarning).length,
-    missing: rows.filter(row => row.recorded === 0).length,
-  };
+export function driverDetail(data, driverId, { warningDays = 7, today = shanghaiToday() } = {}) {
+  const identity = data.drivers.find(driver => driver.id === driverId);
+  if (!identity) return null;
+  const range = presetRange(data.dates, 14, today);
+  const driver = query({ ...data, drivers: [identity] }, { ...range, warningDays }).rows[0];
+  const daily = new Map(driver.daily.map(record => [record.date, record]));
+  driver.daily = rangeDates(range.from, range.to).map(date => daily.get(date) || { driverId, date, amountCents: null, zeroWarning: false });
+  driver.missing = driver.daily.length - driver.recorded;
+  return driver;
 }

@@ -11,7 +11,8 @@ import colorsys
 import hashlib
 import json
 import os
-from collections import Counter, defaultdict
+import re
+from collections import Counter
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
@@ -22,12 +23,37 @@ from zipfile import ZipFile, BadZipFile
 
 import openpyxl
 from openpyxl.styles.colors import COLOR_INDEX
-from openpyxl.utils import get_column_letter
 from openpyxl.utils.datetime import from_excel
 
 
 class ExportError(ValueError):
     pass
+
+
+DEFAULT_YEAR = 2026
+
+
+def sheet_date(value, epoch, coordinate):
+    """Read the saved Sheet2 header; yearless labels use the query year."""
+    try:
+        if numeric(value):
+            value = from_excel(value, epoch)
+        if isinstance(value, datetime):
+            return value.date().isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        if isinstance(value, str):
+            text = value.strip()
+            match = re.fullmatch(r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日(?:总流水)?", text)
+            if match:
+                year, month, day = match.groups()
+                return date(int(year) if year else DEFAULT_YEAR, int(month), int(day)).isoformat()
+            match = re.fullmatch(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", text)
+            if match:
+                return date(*map(int, match.groups())).isoformat()
+    except (ValueError, OverflowError):
+        pass
+    raise ExportError(f"Sheet2!{coordinate} 日期无效，请使用日期或“10月19日总流水”这样的表头。")
 
 
 def numeric(value):
@@ -115,44 +141,19 @@ def extract_bytes(source_bytes):
     formulas = openpyxl.load_workbook(BytesIO(source_bytes), data_only=False, rich_text=True)
     values = openpyxl.load_workbook(BytesIO(source_bytes), data_only=True)
     try:
-        if "Sheet2" not in formulas.sheetnames or "流水表" not in formulas.sheetnames:
-            raise ExportError("需要 Sheet2 和 流水表 两个工作表。")
+        if "Sheet2" not in formulas.sheetnames:
+            raise ExportError("需要名为 Sheet2 的工作表。")
         sheet, cached = formulas["Sheet2"], values["Sheet2"]
-        source, source_formulas = values["流水表"], formulas["流水表"]
-        if sheet.max_row > 5000 or source.max_row > 20000:
+        if sheet.max_row > 5000:
             raise ExportError("行数超过当前导入器限制，请检查工作表的有效范围。")
         if cached["A1"].value != "姓名":
             raise ExportError("Sheet2!A1 应为姓名表头；请先在 Excel/WPS 中计算并保存。")
         reject_conditional_name_fonts(sheet)
         palette = theme_palette(formulas)
-        dates = []
-        for col in range(2, 26):
-            # The supplied SUMIF template maps B:Y to 流水表 F:AC.
-            raw_date = source.cell(1, col + 4).value
-            if numeric(raw_date):
-                raw_date = from_excel(raw_date, formulas.epoch)
-            if not isinstance(raw_date, (date, datetime)):
-                raise ExportError(f"来源日期无效：流水表!{get_column_letter(col + 4)}1")
-            expected = f"{raw_date.month}月{raw_date.day}日总流水"
-            if cached.cell(1, col).value != expected:
-                raise ExportError(f"Sheet2!{get_column_letter(col)}1 与来源日期不一致。")
-            dates.append(raw_date.date().isoformat() if isinstance(raw_date, datetime) else raw_date.isoformat())
+        dates = [sheet_date(cached.cell(1, col).value, values.epoch, cached.cell(1, col).coordinate)
+                 for col in range(2, 26)]
         if len(set(dates)) != 24:
             raise ExportError("日期重复，不能生成唯一的每日记录。")
-
-        source_totals = defaultdict(Decimal)
-        for row in range(2, source.max_row + 1):
-            name = source.cell(row, 4).value
-            if not isinstance(name, str):
-                continue
-            for col in range(2, 26):
-                cell = source.cell(row, col + 4)
-                if source_formulas.cell(row, col + 4).data_type == "f":
-                    raise ExportError(f"来源 {cell.coordinate} 改为公式，当前核验器需要升级。")
-                if cell.data_type == "e":
-                    raise ExportError(f"来源 {cell.coordinate} 包含计算错误。")
-                if numeric(cell.value):
-                    source_totals[(name, col)] += Decimal(str(cell.value))
 
         drivers, records = [], []
         counts, excluded_colors = Counter(), Counter()
@@ -188,16 +189,9 @@ def extract_bytes(source_bytes):
                 if cache.data_type == "e":
                     raise ExportError(f"Sheet2!{cell.coordinate} 包含计算错误。")
                 if cell.data_type == "f":
-                    source_col = get_column_letter(col + 4)
-                    expected = f"=SUMIF(流水表!$D:$D,$A{row},流水表!{source_col}:{source_col})"
-                    if cell.value != expected:
-                        raise ExportError(f"Sheet2!{cell.coordinate} 公式结构发生变化。")
                     if not numeric(amount):
                         raise ExportError(f"Sheet2!{cell.coordinate} 缺少数值缓存，请计算并保存 Excel。")
-                    difference = abs(source_totals[(name, col)] - Decimal(str(amount)))
-                    if difference > Decimal("0.005"):
-                        raise ExportError(f"Sheet2!{cell.coordinate} 缓存与来源合计不一致，请重新计算。")
-                    counts["verified_formulas"] += 1
+                    counts["cached_formula_cells"] += 1
                 elif cell.value is not None and not numeric(amount):
                     raise ExportError(f"Sheet2!{cell.coordinate} 含非数值流水。")
                 if amount is None:
@@ -258,7 +252,7 @@ def atomic_json(path, payload):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="导出 Sheet2!A:Y，整行排除红色姓名，并核验公式缓存。")
+    parser = argparse.ArgumentParser(description="只读取 Sheet2!A:Y 的日期与已保存数值，整行排除红色姓名。")
     parser.add_argument("workbook", type=Path)
     parser.add_argument("--output", type=Path, default=Path(".local/sheet2.json"))
     parser.add_argument("--audit", type=Path, default=Path(".local/validation.json"))

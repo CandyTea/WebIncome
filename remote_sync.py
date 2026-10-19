@@ -30,6 +30,8 @@ class RemoteUploader:
         self.url = base_url.rstrip("/") + "/api/sync"
         self.token = token
         self.timeout = timeout
+        # Only this uploader connects directly; leave the system proxy untouched.
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def upload(self, filename, contents):
         remote_name = filename if filename.lower().endswith(".xlsx") else "workbook.xlsx"
@@ -55,7 +57,7 @@ class RemoteUploader:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with self.opener.open(request, timeout=self.timeout) as response:
                 payload = json.load(response)
         except urllib.error.HTTPError as error:
             message = _server_error(error)

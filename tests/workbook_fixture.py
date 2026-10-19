@@ -1,7 +1,7 @@
 """Small fictional OOXML workbook for tests; contains no business records."""
 from datetime import datetime, timedelta
 from io import BytesIO
-from xml.etree.ElementTree import Element, SubElement, tostring
+from xml.etree.ElementTree import Element, SubElement, fromstring, tostring
 from zipfile import ZipFile, ZIP_DEFLATED
 
 NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -34,7 +34,7 @@ def sheet_xml(rows):
     return tostring(root, encoding="utf-8", xml_declaration=True)
 
 
-def sample_workbook():
+def sample_workbook(sheet2_only=False):
     dates = [datetime(2026, 10, 17) - timedelta(days=index) for index in range(24)]
     summary = {1: [("A1", "姓名", 0, None)]}
     source = {1: [("D1", "姓名", 0, None)]}
@@ -64,6 +64,19 @@ def sample_workbook():
         "xl/worksheets/sheet1.xml": sheet_xml(source),
         "xl/worksheets/sheet2.xml": sheet_xml(summary),
     }
+    if sheet2_only:
+        del files["xl/worksheets/sheet1.xml"]
+        for part, attribute, value in [
+            ("xl/workbook.xml", "name", "流水表"),
+            ("xl/_rels/workbook.xml.rels", "Id", "rId1"),
+            ("[Content_Types].xml", "PartName", "/xl/worksheets/sheet1.xml"),
+        ]:
+            root = fromstring(files[part])
+            for parent in root.iter():
+                for child in list(parent):
+                    if child.get(attribute) == value:
+                        parent.remove(child)
+            files[part] = tostring(root, encoding="utf-8", xml_declaration=True)
     output = BytesIO()
     with ZipFile(output, "w", ZIP_DEFLATED) as archive:
         for name, content in files.items():

@@ -3,7 +3,10 @@ import json
 import tempfile
 import threading
 import unittest
+import urllib.error
+import urllib.request
 from pathlib import Path
+from unittest.mock import patch
 
 from werkzeug.serving import make_server
 
@@ -52,6 +55,48 @@ class RemoteSyncTests(unittest.TestCase):
         response = client.post("/api/sync", data={"workbook": (io.BytesIO(self.workbook), "x.xlsx")}, headers={"Authorization": "Bearer sync-token"})
         self.assertEqual(response.status_code, 200, response.get_json())
         self.assertTrue(response.get_json()["ok"])
+
+    def test_sheet2_only_workbook_syncs_without_a_source_sheet(self):
+        result = RemoteUploader(self.url, "sync-token").upload("sheet2.xlsx", sample_workbook(sheet2_only=True))
+        self.assertTrue(result["ok"])
+        snapshot = self.current()
+        self.assertEqual(snapshot["audit"]["zero_cells"], 1)
+        self.assertEqual(snapshot["audit"]["blank_cells"], 14)
+        previous = snapshot
+        with self.assertRaises(SyncRejected):
+            RemoteUploader(self.url, "sync-token").upload("broken.xlsx", b"incomplete save")
+        self.assertEqual(self.current(), previous)
+
+    def test_upload_bypasses_failing_system_proxy(self):
+        proxy_requests = []
+
+        def failing_proxy(environ, start_response):
+            proxy_requests.append(environ["REQUEST_METHOD"])
+            start_response("502 Bad Gateway", [("Content-Length", "0")])
+            return [b""]
+
+        proxy = make_server("127.0.0.1", 0, failing_proxy)
+        proxy_thread = threading.Thread(target=proxy.serve_forever, daemon=True)
+        proxy_thread.start()
+        proxy_url = f"http://127.0.0.1:{proxy.server_port}"
+        try:
+            with patch("urllib.request.getproxies", return_value={"http": proxy_url}), patch("urllib.request.proxy_bypass", return_value=False):
+                # Reproduce the failure with Python's normal proxy detection.
+                with self.assertRaises(urllib.error.HTTPError) as failure:
+                    urllib.request.build_opener().open(self.url + "/login", timeout=5)
+                self.assertEqual(failure.exception.code, 502)
+                failure.exception.close()
+                result = RemoteUploader(self.url, "sync-token").upload("watch.xlsx", self.workbook)
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(proxy_requests, ["GET"])
+            self.assertEqual(self.current()["source"]["kind"], "remote-sync")
+            self.assertEqual(self.current()["audit"]["included_drivers"], 2)
+            self.assertEqual(self.watched.read_bytes(), self.workbook)
+        finally:
+            proxy.shutdown()
+            proxy_thread.join(timeout=3)
+            proxy.server_close()
 
     def test_endpoint_is_disabled_without_configured_token(self):
         app = create_app(dict(TESTING=True, SECRET_KEY="x", ADMIN_PASSWORD="admin", VIEW_PASSWORD="viewer", DATA_DIR=str(self.root / "disabled")))

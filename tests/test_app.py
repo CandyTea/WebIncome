@@ -69,7 +69,7 @@ class PortalTests(unittest.TestCase):
         response = self.upload()
         self.assertEqual(response.status_code, 200, response.get_json())
         audit = response.get_json()["audit"]
-        for name, value in {"included_drivers":2,"excluded_red_drivers":2,"numeric_cells":34,"blank_cells":14,"zero_cells":1,"total_amount_cents":32600,"verified_formulas":34,"record_count":48}.items():
+        for name, value in {"included_drivers":2,"excluded_red_drivers":2,"numeric_cells":34,"blank_cells":14,"zero_cells":1,"total_amount_cents":32600,"cached_formula_cells":34,"record_count":48}.items():
             self.assertEqual(audit[name], value, name)
         payload = self.client.get("/data/sheet2.json").get_json()
         self.assertEqual(len(payload["dates"]), 24)
@@ -94,9 +94,9 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(self.upload(b"This is not Excel").status_code, 400)
         self.assertEqual((Path(self.directory.name) / "current.json").read_bytes(), previous)
 
-    def test_stale_and_missing_formula_caches_rejected(self):
+    def test_missing_formula_caches_rejected(self):
         namespace = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
-        for stale_value in ("1", None):
+        for missing_value in (None, ""):
             modified = io.BytesIO()
             with ZipFile(io.BytesIO(self.workbook)) as source, ZipFile(modified, "w") as output:
                 for entry in source.infolist():
@@ -104,7 +104,7 @@ class PortalTests(unittest.TestCase):
                     if entry.filename == "xl/worksheets/sheet2.xml":
                         sheet = ET.fromstring(contents)
                         value = sheet.find(".//s:c[@r='B2']/s:v", namespace)
-                        value.text = stale_value
+                        value.text = missing_value
                         contents = ET.tostring(sheet)
                     output.writestr(entry, contents)
             with self.assertRaises(ValueError):

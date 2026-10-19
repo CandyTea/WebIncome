@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { query, presetRange, makeDate, daysInMonth, filterRows, tabCounts, rangeDates, shanghaiToday, favoriteFirst } from '../dist/query.mjs';
+import { query, presetRange, makeDate, daysInMonth, rangeDates, shanghaiToday, favoriteFirst, driverDetail } from '../dist/query.mjs';
 
 const data = {
   dates: ['2026-10-17', '2026-10-16', '2026-10-15'],
@@ -169,15 +169,45 @@ test('金额从低到高排序，未记录排最后，保留真实零值', () =>
   assert.deepEqual(query(source).rows.map(row => row.id), ['b','a','real-zero','empty']);
 });
 
-test('紧凑视图分类筛选与计数', () => {
-  const rows = [
-    {recorded: 2, hasZeroWarning: true},
-    {recorded: 0, hasZeroWarning: false},
-    {recorded: 1, hasZeroWarning: false},
-  ];
-  assert.deepEqual(tabCounts(rows), {all: 3, warning: 1, missing: 1});
-  assert.equal(filterRows(rows, 'warning').length, 1);
-  assert.equal(filterRows(rows, 'missing')[0].recorded, 0);
-  assert.equal(filterRows(rows, 'all').length, 3);
-  assert.equal(filterRows(rows, 'unknown').length, 3);
+test('司机明细独立显示截至昨日的14天，首页三天范围不改变', () => {
+  const dates = rangeDates('2026-10-05', '2026-10-20');
+  const source = {
+    dates,
+    drivers: [{ id: 'a', name: '司机甲' }, { id: 'b', name: '司机甲乙' }],
+    records: dates.flatMap(date => [{ driverId: 'a', date, amountCents: 100 }, { driverId: 'b', date, amountCents: 900 }]),
+  };
+  const before = JSON.stringify(source);
+  const home = query(source, presetRange(source.dates, 3, '2026-10-20'));
+  const detail = driverDetail(source, 'a', { today: '2026-10-20' });
+  assert.equal(detail.daily.length, 14);
+  assert.equal(detail.daily[0].date, '2026-10-19');
+  assert.equal(detail.daily.at(-1).date, '2026-10-06');
+  assert.equal(detail.recorded, 14);
+  assert.equal(detail.total, 1400);
+  assert.equal(home.days.length, 3);
+  assert.equal(home.rows.find(row => row.id === 'a').total, 300);
+  assert.equal(JSON.stringify(source), before);
+});
+
+test('司机14天明细补齐未上传的日期，保留零值和空白', () => {
+  const detail = driverDetail(data, 'a', { today: '2026-10-20' });
+  assert.equal(detail.daily.length, 14);
+  assert.equal(detail.daily[0].amountCents, null);
+  assert.equal(detail.daily.find(row => row.date === '2026-10-16').amountCents, 0);
+  assert.equal(detail.daily.find(row => row.date === '2026-10-15').amountCents, null);
+  assert.equal(detail.total, 12629);
+  assert.equal(detail.recorded, 2);
+  assert.equal(detail.missing, 12);
+  assert.equal(driverDetail(data, 'removed', { today: '2026-10-20' }), null);
+});
+
+test('14天明细保持连续零流水预警规则并处理年初边界', () => {
+  const detail = driverDetail(weekData, 'zero', { today: '2026-10-18', warningDays: 3 });
+  assert.equal(detail.daily.length, 14);
+  assert.equal(detail.hasZeroWarning, true);
+  assert.equal(detail.daily.filter(row => row.zeroWarning).length, 3);
+  const newYear = driverDetail({ dates: ['2026-01-01'], drivers: [{ id: 'a', name: '司机甲' }], records: [] }, 'a', { today: '2026-01-03' });
+  assert.deepEqual(newYear.daily.map(row => row.date), ['2026-01-02', '2026-01-01']);
+  assert.equal(newYear.recorded, 0);
+  assert.equal(newYear.missing, 2);
 });

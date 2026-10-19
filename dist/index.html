@@ -75,13 +75,7 @@
         <div id="zero-alert" class="zero-alert" role="status" aria-live="polite" hidden><strong>0 流水预警</strong><p id="zero-alert-text"></p></div>
         <div class="results-toolbar">
           <div><h2>司机流水</h2><p id="result-count" aria-live="polite" aria-atomic="true"></p></div>
-          <div class="toolbar-controls">
-            <div class="view-switch" role="group" aria-label="查看方式">
-              <button type="button" data-view="cards" aria-pressed="true">卡片</button>
-              <button type="button" data-view="compact" aria-pressed="false">紧凑</button>
-            </div>
-            <label class="sort-label" for="sort"><span class="sr-only">排序方式</span><select id="sort" aria-label="排序方式"><option value="amount">合计从高到低</option><option value="amount-asc">合计从低到高</option><option value="name">按姓名排序</option></select></label>
-          </div>
+          <label class="sort-label" for="sort"><span class="sr-only">排序方式</span><select id="sort" aria-label="排序方式"><option value="amount">合计从高到低</option><option value="amount-asc">合计从低到高</option><option value="name">按姓名排序</option></select></label>
         </div>
         <div id="classic-view">
           <p class="comparison-hint">日期行与姓名列固定；点司机查看明细，点星号重点关注。</p>
@@ -89,14 +83,6 @@
             <div class="comparison-header" aria-hidden="true"><div id="comparison-header-viewport" class="comparison-header-viewport"></div></div>
             <div id="driver-list" class="comparison-scroll" tabindex="0" role="region" aria-label="司机每日流水对比，可左右滚动"></div>
           </div>
-        </div>
-        <div id="compact-view" hidden>
-          <div class="compact-tabs" role="tablist" aria-label="司机分类">
-            <button type="button" role="tab" id="tab-all" data-tab="all" aria-selected="true">全部 <span class="tab-count" id="count-all">0</span></button>
-            <button type="button" role="tab" id="tab-warning" data-tab="warning" aria-selected="false">预警 <span class="tab-count" id="count-warning">0</span></button>
-            <button type="button" role="tab" id="tab-missing" data-tab="missing" aria-selected="false">未记录 <span class="tab-count" id="count-missing">0</span></button>
-          </div>
-          <div id="compact-list" class="compact-list"></div>
         </div>
         <div id="empty" class="empty" hidden><h3>没有匹配的流水</h3><p>试试其他司机姓名，或调整查询时间。</p><button id="empty-reset" type="button">查看全部数据</button></div>
         <p class="data-note" id="data-note"></p>

@@ -10,3 +10,5 @@ __pycache__/
 !.env.example
 dist/data/
 *.log
+/Excel同步助手.exe
+/Excel同步助手.exe.config

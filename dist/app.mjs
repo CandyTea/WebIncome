@@ -1,4 +1,4 @@
-import { query, presetRange, daysInMonth, makeDate, filterRows, tabCounts, rangeDates, favoriteFirst, shanghaiToday } from './query.mjs';
+import { query, presetRange, daysInMonth, makeDate, rangeDates, favoriteFirst, shanghaiToday, driverDetail } from './query.mjs';
 
 const $ = id => document.getElementById(id);
 const money = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -9,12 +9,9 @@ let dataVersion = null;
 let refreshing = false;
 let activeDays = 3;
 let warningDays = 7;
-let viewMode = 'cards';
-let activeTab = 'all';
 let selectedDriverId = null;
 let lastDialogFocus = null;
 let filtersCollapsed = false;
-const isMobile = () => matchMedia('(max-width: 700px)').matches;
 const standardDays = new Set([0, 1, 3, 7, 14]);
 const favoriteKey = 'webincome.favorites.v1';
 let favorites = new Set();
@@ -119,7 +116,7 @@ function favoriteButton(driver) {
     let saved = true;
     try { localStorage.setItem(favoriteKey, JSON.stringify([...favorites])); } catch { saved = false; }
     render();
-    const container = viewMode === 'cards' ? $('driver-list') : $('compact-list');
+    const container = $('driver-list');
     [...container.querySelectorAll('[data-favorite-id]')].find(item => item.dataset.favoriteId === driver.id)?.focus({ preventScroll: true });
     $('favorite-status').textContent = saved ? `${driver.name}${favorites.has(driver.id) ? '已标星，优先显示' : '已取消星标'}。星标仅保存在当前浏览器。` : '当前浏览器无法保存星标，关闭页面后标记会丢失。';
   });
@@ -170,8 +167,8 @@ function renderComparison(result, dates) {
     const identity = el('div', 'driver-identity');
     const name = el('button', 'driver-name-open', driver.name);
     name.type = 'button';
-    name.setAttribute('aria-label', `查看${driver.name}的每日明细`);
-    name.addEventListener('click', () => openDriver(driver, dates.length));
+    name.setAttribute('aria-label', `查看${driver.name}最近14天的流水明细`);
+    name.addEventListener('click', () => openDriver(driver));
     identity.append(favoriteButton(driver), name);
     nameCell.append(identity);
     if (driver.hasZeroWarning) nameCell.append(el('span', 'zero-badge', `连续 ${warningDays} 天为 0`));
@@ -190,90 +187,33 @@ function renderComparison(result, dates) {
   $('comparison-header-viewport').scrollLeft = container.scrollLeft;
 }
 
-function renderCompact(result) {
-  const rowsWithData = result.days.length ? result.rows : [];
-  const counts = tabCounts(rowsWithData);
-  $('count-all').textContent = counts.all;
-  $('count-warning').textContent = counts.warning;
-  $('count-missing').textContent = counts.missing;
-  for (const button of document.querySelectorAll('[data-tab]')) {
-    const selected = button.dataset.tab === activeTab;
-    button.setAttribute('aria-selected', String(selected));
-    button.tabIndex = selected ? 0 : -1;
-  }
-  const rows = filterRows(rowsWithData, activeTab);
-  const list = $('compact-list');
-  list.replaceChildren();
-  const days = result.comparisonDates.length;
-  for (const driver of rows) {
-    const row = el('div', 'compact-row');
-    row.dataset.driverId = driver.id;
-    if (driver.hasZeroWarning) row.classList.add('has-zero');
-    const main = el('span', 'compact-main');
-    main.append(el('span', 'compact-name', driver.name));
-    const sub = el('span', 'compact-sub');
-    sub.append(document.createTextNode(driver.recorded ? `已记录 ${driver.recorded} / ${days} 天` : '范围内未记录'));
-    if (driver.hasZeroWarning) sub.append(el('span', 'compact-warn', `连续 ${warningDays} 天 0 流水`));
-    main.append(sub);
-    const total = el('span', driver.recorded ? 'compact-total' : 'compact-total unrecorded', driver.recorded ? formatMoney(driver.total) : '未记录');
-    if (driver.hasZeroWarning && driver.recorded > 0 && driver.zeroDays === driver.recorded) total.classList.add('zero-amount');
-    const open = el('button', 'compact-open');
-    open.type = 'button';
-    open.append(main, total, el('span', 'compact-chevron', '›'));
-    open.setAttribute('aria-label', `${driver.name}，${driver.recorded ? `已记录 ${driver.recorded} / ${days} 天，合计 ${formatMoney(driver.total)} 元` : '范围内未记录'}，点开查看每日明细`);
-    open.addEventListener('click', () => openDriver(driver, days));
-    row.append(favoriteButton(driver), open);
-    list.append(row);
-  }
-  if ($('driver-dialog').open && selectedDriverId) {
-    const driver = result.rows.find(item => item.id === selectedDriverId);
-    if (driver) updateDialog(driver, days);
-    else closeDialog();
-  }
-}
-
-function openDriver(driver, days) {
+function openDriver(driver) {
   selectedDriverId = driver.id;
   lastDialogFocus = document.activeElement;
-  updateDialog(driver, days);
+  if (!updateDialog()) return;
   const dialog = $('driver-dialog');
   if (!dialog.open) dialog.showModal();
 }
 
-function updateDialog(driver, days) {
+function updateDialog() {
+  const driver = driverDetail(data, selectedDriverId, { warningDays });
+  if (!driver) { closeDialog(); return false; }
+  const days = driver.daily.length;
   $('dialog-title').textContent = driver.name;
   const meta = $('dialog-meta');
-  meta.replaceChildren(document.createTextNode(driver.recorded ? `已记录 ${driver.recorded} / ${days} 天 · 合计 ${formatMoney(driver.total)} 元` : '范围内未记录'));
+  meta.replaceChildren(document.createTextNode(`最近 ${days} 天 · ${driver.recorded ? `已记录 ${driver.recorded} / ${days} 天 · 合计 ${formatMoney(driver.total)} 元` : '未记录'}`));
   if (driver.hasZeroWarning) meta.append(el('span', 'zero-badge', `连续 ${warningDays} 天 0 流水`));
   const daily = el('div', 'daily dialog-daily');
   if (driver.daily.length) daily.append(dailyTable(driver));
   else daily.append(el('p', 'dialog-empty', '此范围内没有记录。'));
   $('dialog-body').replaceChildren(daily);
+  return true;
 }
 
 function closeDialog() {
   const dialog = $('driver-dialog');
   if (dialog.open) dialog.close();
   selectedDriverId = null;
-}
-
-function applyViewMode() {
-  document.body.classList.toggle('view-compact', viewMode === 'compact');
-  $('classic-view').hidden = viewMode === 'compact';
-  $('compact-view').hidden = viewMode !== 'compact';
-  for (const button of document.querySelectorAll('[data-view]')) {
-    button.setAttribute('aria-pressed', String(button.dataset.view === viewMode));
-  }
-  if (viewMode === 'cards') closeDialog();
-}
-
-function setView(mode) {
-  if (mode !== 'cards' && mode !== 'compact') return;
-  viewMode = mode;
-  try { localStorage.setItem('webincome.view', mode); } catch { /* Private mode can reject storage. */ }
-  applyViewMode();
-  if (mode === 'compact' && isMobile()) setFiltersCollapsed(true);
-  if (data) render();
 }
 
 function setFiltersCollapsed(collapsed) {
@@ -325,17 +265,13 @@ function render() {
   $('driver-count').textContent = result.days.length ? result.rows.length : 0;
   $('day-count').textContent = result.days.length ? result.comparisonDates.length : 0;
   $('result-count').textContent = result.days.length ? `共 ${result.rows.length} 名司机，点开查看每日明细` : '所选范围没有数据';
-  const visibleRows = viewMode === 'compact' ? filterRows(result.rows, activeTab) : result.rows;
-  const hasVisibleRows = result.days.length > 0 && visibleRows.length > 0;
+  const hasVisibleRows = result.days.length > 0 && result.rows.length > 0;
   $('empty').hidden = hasVisibleRows;
   const emptyHeading = $('empty').querySelector('h3');
   const emptyText = $('empty').querySelector('p');
   if (!result.days.length) {
     emptyHeading.textContent = '所选范围没有数据';
     emptyText.textContent = '请调整查询时间，或让管理员上传新的 Excel。';
-  } else if (viewMode === 'compact' && activeTab !== 'all') {
-    emptyHeading.textContent = activeTab === 'warning' ? '没有预警司机' : '没有未记录的司机';
-    emptyText.textContent = activeTab === 'warning' ? `当前范围内没有连续 ${warningDays} 天 0 流水的司机。` : '当前范围内所有司机都有流水记录。';
   } else {
     emptyHeading.textContent = '没有匹配的流水';
     emptyText.textContent = '试试其他司机姓名，或调整查询时间。';
@@ -345,7 +281,7 @@ function render() {
   $('zero-alert').hidden = result.warningDrivers === 0 || result.days.length === 0;
   $('zero-alert-text').textContent = result.warningRange ? `${result.warningDrivers} 名司机最近连续 ${warningDays} 天每天流水均为 0（${formatDate(result.warningRange.from)} 至 ${formatDate(result.warningRange.to)}）。` : '';
   $('warning-hint').textContent = result.warningRange ? `当前规则：最近连续 ${warningDays} 天每天均为 0 才报红。预警范围 ${formatDate(result.warningRange.from)} 至 ${formatDate(result.warningRange.to)}，与查询时间独立。` : '按最新数据往前判断；缺少记录不报红。';
-  renderCompact(result);
+  if ($('driver-dialog').open && selectedDriverId) updateDialog();
   updateFilterSummary();
   for (const button of document.querySelectorAll('[data-days]')) {
     button.setAttribute('aria-pressed', String(activeDays === Number(button.dataset.days)));
@@ -361,8 +297,6 @@ function render() {
   }
   if (state.sort !== 'amount') url.searchParams.set('sort', state.sort);
   if (warningDays !== 7) url.searchParams.set('warnDays', String(warningDays));
-  if (viewMode === 'compact') url.searchParams.set('view', 'compact');
-  if (activeTab !== 'all') url.searchParams.set('tab', activeTab);
   history.replaceState(null, '', url);
 }
 
@@ -380,7 +314,6 @@ function reset() {
   $('warning-days').value = '7';
   $('warning-days').removeAttribute('aria-invalid');
   $('warning-rule-error').hidden = true;
-  activeTab = 'all';
   closeDialog();
   render();
 }
@@ -492,20 +425,6 @@ $('apply-warning').addEventListener('click', applyWarningDays);
 $('warning-days').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); applyWarningDays(); } });
 $('empty-reset').addEventListener('click', reset);
 $('retry').addEventListener('click', () => location.reload());
-for (const button of document.querySelectorAll('[data-view]')) {
-  button.addEventListener('click', () => setView(button.dataset.view));
-}
-for (const button of document.querySelectorAll('[data-tab]')) {
-  button.addEventListener('click', () => { activeTab = button.dataset.tab; if (data) render(); });
-  button.addEventListener('keydown', event => {
-    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
-    const tabs = [...document.querySelectorAll('[data-tab]')];
-    const index = tabs.indexOf(button);
-    const next = tabs[(index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
-    next.focus();
-    next.click();
-  });
-}
 $('filter-toggle').addEventListener('click', () => setFiltersCollapsed(!filtersCollapsed));
 $('dialog-close').addEventListener('click', () => $('driver-dialog').close());
 $('driver-dialog').addEventListener('click', event => { if (event.target === $('driver-dialog')) $('driver-dialog').close(); });
@@ -513,20 +432,6 @@ $('driver-dialog').addEventListener('close', () => {
   selectedDriverId = null;
   if (lastDialogFocus && document.contains(lastDialogFocus)) lastDialogFocus.focus();
   lastDialogFocus = null;
-});
-const initialParams = new URLSearchParams(location.search);
-let storedView = null;
-try { storedView = localStorage.getItem('webincome.view'); } catch { /* Ignore unavailable storage. */ }
-viewMode = initialParams.get('view') === 'compact' || (initialParams.get('view') !== 'cards' && storedView === 'compact') ? 'compact' : 'cards';
-if (initialParams.has('view')) {
-  try { localStorage.setItem('webincome.view', viewMode); } catch { /* Ignore unavailable storage. */ }
-}
-activeTab = ['warning', 'missing'].includes(initialParams.get('tab')) ? initialParams.get('tab') : 'all';
-applyViewMode();
-setFiltersCollapsed(viewMode === 'compact' && isMobile());
-matchMedia('(max-width: 700px)').addEventListener('change', event => {
-  if (!event.matches) setFiltersCollapsed(false);
-  else if (viewMode === 'compact') setFiltersCollapsed(true);
 });
 load();
 
