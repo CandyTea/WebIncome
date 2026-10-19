@@ -26,6 +26,7 @@ def create_app(config=None):
         DATA_DIR=os.environ.get("WEBINCOME_DATA_DIR", str(ROOT / ".local" / "server")),
         ADMIN_PASSWORD=os.environ.get("WEBINCOME_ADMIN_PASSWORD", ""),
         VIEW_PASSWORD=os.environ.get("WEBINCOME_VIEW_PASSWORD", ""),
+        PUBLIC_VIEW=os.environ.get("WEBINCOME_PUBLIC_VIEW") == "1",
         WATCH_FILE=os.environ.get("WEBINCOME_WATCH_FILE", ""),
         SYNC_TOKEN=os.environ.get("WEBINCOME_SYNC_TOKEN", ""),
         MAX_CONTENT_LENGTH=12 * 1024 * 1024,
@@ -38,7 +39,7 @@ def create_app(config=None):
         application.config.update(config)
     if not application.config["ADMIN_PASSWORD"]:
         raise RuntimeError("请先设置 WEBINCOME_ADMIN_PASSWORD。")
-    if not application.config["VIEW_PASSWORD"]:
+    if not application.config["PUBLIC_VIEW"] and not application.config["VIEW_PASSWORD"]:
         application.config["VIEW_PASSWORD"] = application.config["ADMIN_PASSWORD"]
     data_dir = Path(application.config["DATA_DIR"])
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -118,6 +119,8 @@ def create_app(config=None):
         def decorate(function):
             @functools.wraps(function)
             def wrapped(*args, **kwargs):
+                if not admin and application.config["PUBLIC_VIEW"]:
+                    return function(*args, **kwargs)
                 role = session.get("role")
                 if role not in ("viewer", "admin"):
                     if request.path.startswith("/api/") or request.path.startswith("/data/"):
@@ -156,14 +159,14 @@ def create_app(config=None):
                 session["role"] = "admin"
                 session.permanent = True
                 return redirect(destination)
-            elif hmac.compare_digest(password.encode(), application.config["VIEW_PASSWORD"].encode()):
+            elif not application.config["PUBLIC_VIEW"] and hmac.compare_digest(password.encode(), application.config["VIEW_PASSWORD"].encode()):
                 session.clear()
                 session["role"] = "viewer"
                 session.permanent = True
                 return redirect(destination)
             else:
                 error, status = "密码不正确，请重新输入。", 401
-        return render_template("login.html", csrf=csrf_token(), error=error), status
+        return render_template("login.html", csrf=csrf_token(), error=error, public_view=application.config["PUBLIC_VIEW"]), status
 
     @application.post("/logout")
     def logout():

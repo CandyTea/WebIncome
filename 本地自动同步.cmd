@@ -10,6 +10,7 @@ if not exist ".venv\Scripts\python.exe" (
 if not exist ".local" mkdir ".local"
 if not exist ".local\preview-password.txt" ".venv\Scripts\python.exe" -c "from pathlib import Path; import secrets; Path('.local/preview-password.txt').write_text(secrets.token_hex(16), encoding='ascii')"
 set /p WEBINCOME_ADMIN_PASSWORD=<".local\preview-password.txt"
+set WEBINCOME_PUBLIC_VIEW=1
 echo 本地地址：http://127.0.0.1:8765
 echo 管理密码：%WEBINCOME_ADMIN_PASSWORD%
 echo 正在监测：全部流水表(1).xlsx

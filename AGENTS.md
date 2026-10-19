@@ -9,7 +9,8 @@ Flask 只读司机流水查询站：管理员上传 `.xlsx`，网站读取 `Shee
 ## 当前状态（已完成）
 
 - 功能：登录/权限、Excel 上传与校验、查询筛选、连续 0 流水预警、三种排序、手机/深色模式、本机自动同步。
-- 测试：14 项 Python 测试、15 项前端测试全部通过。
+- 查看权限：线上已取消查看密码（`WEBINCOME_PUBLIC_VIEW=1`），打开网址即可查询；上传 Excel 仍需管理员密码。任何拿到网址的人都能看到流水数据。
+- 测试：17 项 Python 测试、15 项前端测试全部通过。
   - `python -m unittest discover -s tests -v`
   - `node --test tests/query.test.mjs`
 - Git：`main` 分支，私有仓库 `CandyTea/WebIncome`。
@@ -39,6 +40,7 @@ Flask 只读司机流水查询站：管理员上传 `.xlsx`，网站读取 `Shee
 5. `远程自动同步.cmd`（新增）
    - 读取 `.local/remote-sync.txt`（`url=`、`token=`、`watch=`）并运行 `remote_sync.py`。
 6. 文档：`README.md`、`部署说明.md`、`.env.example` 增加远程同步说明和 `WEBINCOME_SYNC_TOKEN`。
+7. 公开查看：`app.py` 新增 `WEBINCOME_PUBLIC_VIEW`；为 `1` 时查看页和查询接口无需登录，管理员上传仍需密码。`本地自动同步.cmd` 和线上 `/etc/webincome.env` 已设为 `1`。
 
 ## 尚未完成 / 下一步
 
@@ -50,7 +52,7 @@ Flask 只读司机流水查询站：管理员上传 `.xlsx`，网站读取 `Shee
 
 ## 验证记录（2026-10-20）
 
-- Python 14 项、前端 15 项测试通过。
+- Python 17 项、前端 15 项测试通过。
 - 服务器本机 `/login` 返回 200。
 - `POST /api/sync`：错误令牌 401，正确令牌 200，导入统计与本地一致。
 - 本机 `remote_sync.py --once` 推送成功，服务器 `current.json` 的 `source.kind` 为 `remote-sync`。

@@ -111,5 +111,57 @@ class PortalTests(unittest.TestCase):
                 extract_bytes(modified.getvalue())
 
 
+class PublicViewTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.config = dict(TESTING=True, SECRET_KEY="test-only", DATA_DIR=self.directory.name,
+                           ADMIN_PASSWORD="test-admin", PUBLIC_VIEW=True, VIEW_PASSWORD="")
+        self.app = create_app(self.config)
+        self.client = self.app.test_client()
+        self.workbook = sample_workbook()
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def login(self, password="test-admin"):
+        page = self.client.get("/login")
+        self.assertIn("管理员登录".encode(), page.data)
+        token = re.search(rb'name="csrf" value="([^"]+)"', page.data).group(1).decode()
+        return self.client.post("/login", data={"password": password, "csrf": token})
+
+    def upload(self):
+        self.client.get("/admin")
+        with self.client.session_transaction() as session:
+            csrf = session.get("csrf", "")
+        return self.client.post("/api/upload", data={"workbook": (io.BytesIO(self.workbook), "流水.xlsx")},
+                                headers={"X-CSRF-Token": csrf})
+
+    def test_query_is_public_but_admin_is_not(self):
+        self.assertEqual(self.client.get("/").status_code, 200)
+        self.assertEqual(self.client.get("/api/data-status").status_code, 200)
+        self.assertEqual(self.client.get("/admin").status_code, 302)
+        self.assertEqual(self.client.get("/api/local-sync").status_code, 401)
+        self.assertEqual(self.upload().status_code, 401)
+        self.assertFalse((Path(self.directory.name) / "current.json").exists())
+
+    def test_admin_can_login_and_upload(self):
+        self.assertEqual(self.login().status_code, 302)
+        response = self.upload()
+        self.assertEqual(response.status_code, 200, response.get_json())
+        data = self.client.get("/data/sheet2.json")
+        self.assertEqual(data.status_code, 200)
+        self.assertEqual(len(data.get_json()["dates"]), 24)
+
+    def test_old_view_password_is_not_accepted_when_public(self):
+        app = create_app(dict(TESTING=True, SECRET_KEY="test-only", DATA_DIR=self.directory.name,
+                              ADMIN_PASSWORD="test-admin", VIEW_PASSWORD="legacy-view", PUBLIC_VIEW=True))
+        with app.test_client() as client:
+            page = client.get("/login")
+            token = re.search(rb'name="csrf" value="([^"]+)"', page.data).group(1).decode()
+            response = client.post("/login", data={"password": "legacy-view", "csrf": token})
+            self.assertEqual(response.status_code, 401)
+            self.assertEqual(client.get("/admin").status_code, 302)
+
+
 if __name__ == "__main__":
     unittest.main()
