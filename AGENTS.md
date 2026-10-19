@@ -21,6 +21,8 @@ Flask 只读司机流水查询站：管理员上传 `.xlsx`，网站读取 `Shee
   - 服务器上另有 Docker 项目「讯览」占用 80/8088，Node 服务占用 3000，**不要动它们**。
   - 本机已上传一份真实流水表做验收：26 名司机、593 个数值格、31 个空白、196 个零值，合计 113,538.98 元，与本地核对一致。
   - 服务器登录信息、管理员/查看密码、同步令牌保存在本机 `.local/server-credentials.txt`（Git 忽略）。
+  - 本机已生成专用部署密钥并安装到服务器 root 的 `authorized_keys`，日常用 `ssh -i ~/.ssh/webincome_deploy root@124.221.0.127`；不再依赖密码。
+  - 本轮改动已推送到 GitHub：`106e597 Add token-authenticated remote sync for watched workbooks`。
 
 ## 本轮新增/修改
 
@@ -44,7 +46,16 @@ Flask 只读司机流水查询站：管理员上传 `.xlsx`，网站读取 `Shee
 2. 目前是 HTTP 直连（无域名、无 HTTPS），密码和流水明文经过公网，适合临时自用。后续有域名时按 `部署说明.md` 接入 Nginx/HTTPS，并把 gunicorn 改回监听 `127.0.0.1`。
 3. iPhone Safari / Mac Safari 真机验收（月日选择框、快捷范围、横屏、深色模式）。
 4. 服务器目前用打包上传部署，没有配置 GitHub Deploy Key；以后若要 `git pull` 更新，需要生成只读 Deploy Key 并加到仓库。
-5. 本轮的远程同步改动是否已推送到 GitHub，以 `git status` / `git log` 为准。
+5. 服务器目前用打包上传部署，没有配置 GitHub Deploy Key；服务器访问 GitHub 不稳定，暂不建议改为 `git pull`。需要时再生成只读 Deploy Key 并加到仓库。
+
+## 验证记录（2026-10-20）
+
+- Python 14 项、前端 15 项测试通过。
+- 服务器本机 `/login` 返回 200。
+- `POST /api/sync`：错误令牌 401，正确令牌 200，导入统计与本地一致。
+- 本机 `remote_sync.py --once` 推送成功，服务器 `current.json` 的 `source.kind` 为 `remote-sync`。
+- GitHub 推送成功（`ae67fe9..106e597`）。
+- 外网 `http://124.221.0.127:8765` 仍被腾讯云安全组拦截，待放行后即可访问。
 
 ## 操作命令
 
