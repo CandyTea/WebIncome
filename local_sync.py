@@ -10,11 +10,20 @@ from pathlib import Path
 from tools.export_sheet2 import ExportError, extract_bytes
 
 
+class SyncRejected(RuntimeError):
+    """The remote site refused this workbook; wait for the next save."""
+
+
+class RetryableSyncError(RuntimeError):
+    """A temporary failure; retry the same saved workbook later."""
+
+
 class LocalWorkbookSync:
-    def __init__(self, path, save_snapshot, existing_hash=None, stable_seconds=1.5):
+    def __init__(self, path, save_snapshot, existing_hash=None, stable_seconds=1.5, retry_seconds=10):
         self.path = Path(path).resolve()
         self.save_snapshot = save_snapshot
         self.stable_seconds = stable_seconds
+        self.retry_seconds = retry_seconds
         self._source_hash = existing_hash
         self._candidate = None
         self._candidate_since = 0.0
@@ -70,10 +79,15 @@ class LocalWorkbookSync:
                 if self._signature(self.path.stat()) != signature:
                     self._candidate = None
                     return
-                self.save_snapshot(payload, audit, {"kind": "local", "fileName": self.path.name})
+                self.save_snapshot(payload, audit, {"kind": "local", "fileName": self.path.name}, contents)
                 self._source_hash = digest
             self._processed = signature
             self._update(state="synced", message="已同步。保存 Excel 后会自动更新。", lastSyncedAt=datetime.now(timezone.utc).isoformat())
+        except RetryableSyncError as error:
+            # Network or server failures should retry the same saved file
+            # without waiting for another save.
+            self._next_retry = now + self.retry_seconds
+            self._update(state="error", message=f"同步未完成：{error} 将自动重试。已有网页数据已保留。")
         except OSError:
             self._candidate = None
             self._processed = None
@@ -83,7 +97,7 @@ class LocalWorkbookSync:
             # Invalid saved files are retried after the next save. Valid data
             # remains untouched, including when Excel clears formula caches.
             self._processed = self._candidate
-            message = str(error) if isinstance(error, ExportError) else "无法读取此 Excel，请在 Excel/WPS 中计算并重新保存。"
+            message = str(error) if isinstance(error, (ExportError, SyncRejected)) else "无法读取此 Excel，请在 Excel/WPS 中计算并重新保存。"
             self._update(state="error", message=f"同步未完成：{message} 原有数据已保留。")
 
     def start(self):

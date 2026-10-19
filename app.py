@@ -27,6 +27,7 @@ def create_app(config=None):
         ADMIN_PASSWORD=os.environ.get("WEBINCOME_ADMIN_PASSWORD", ""),
         VIEW_PASSWORD=os.environ.get("WEBINCOME_VIEW_PASSWORD", ""),
         WATCH_FILE=os.environ.get("WEBINCOME_WATCH_FILE", ""),
+        SYNC_TOKEN=os.environ.get("WEBINCOME_SYNC_TOKEN", ""),
         MAX_CONTENT_LENGTH=12 * 1024 * 1024,
         PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
         SESSION_COOKIE_HTTPONLY=True,
@@ -59,7 +60,7 @@ def create_app(config=None):
             return None
         return json.loads(state_path.read_text(encoding="utf-8"))
 
-    def save_snapshot(payload, audit, source=None):
+    def save_snapshot(payload, audit, source=None, contents=None):
         uploaded_at = datetime.now(timezone.utc).isoformat()
         atomic_json(state_path, {"uploadedAt": uploaded_at, "data": payload, "audit": audit, "source": source or {"kind": "upload"}})
         if source is None and watcher is not None:
@@ -73,6 +74,26 @@ def create_app(config=None):
         watcher = LocalWorkbookSync(application.config["WATCH_FILE"], save_snapshot, existing_hash=existing_hash)
     application.extensions["local_sync"] = watcher
 
+    class UploadProblem(Exception):
+        def __init__(self, message, status=400):
+            super().__init__(message)
+            self.status = status
+
+    def parse_workbook():
+        upload_file = request.files.get("workbook")
+        if not upload_file or not upload_file.filename or not upload_file.filename.lower().endswith(".xlsx"):
+            raise UploadProblem("请选择 .xlsx 格式的 Excel 工作簿。")
+        source_bytes = upload_file.read(10 * 1024 * 1024 + 1)
+        if len(source_bytes) > 10 * 1024 * 1024:
+            raise UploadProblem("Excel 文件不能超过 10 MB。", 413)
+        try:
+            payload, audit = extract_bytes(source_bytes)
+        except Exception as error:
+            # Keep the last valid snapshot untouched on every import failure.
+            message = str(error) if isinstance(error, ExportError) else "无法读取此 Excel，请检查文件格式，并在 Excel/WPS 中重新计算、保存后再上传。"
+            raise UploadProblem(message) from error
+        return payload, audit, upload_file.filename
+
     def csrf_token():
         if "csrf" not in session:
             session["csrf"] = secrets.token_urlsafe(32)
@@ -82,6 +103,16 @@ def create_app(config=None):
         received = request.headers.get("X-CSRF-Token") or request.form.get("csrf", "")
         expected = session.get("csrf", "")
         return bool(received and expected and hmac.compare_digest(received, expected))
+
+    def valid_sync_token():
+        expected = application.config["SYNC_TOKEN"]
+        if not expected:
+            return False
+        received = request.headers.get("X-Sync-Token", "")
+        authorization = request.headers.get("Authorization", "")
+        if authorization.startswith("Bearer "):
+            received = authorization[7:]
+        return bool(received) and hmac.compare_digest(received.encode(), expected.encode())
 
     def require_user(admin=False):
         def decorate(function):
@@ -181,22 +212,31 @@ def create_app(config=None):
     def upload():
         if not valid_csrf():
             return jsonify(error="页面已过期，请刷新后重新上传。"), 400
-        upload_file = request.files.get("workbook")
-        if not upload_file or not upload_file.filename or not upload_file.filename.lower().endswith(".xlsx"):
-            return jsonify(error="请选择 .xlsx 格式的 Excel 工作簿。"), 400
-        source_bytes = upload_file.read(10 * 1024 * 1024 + 1)
-        if len(source_bytes) > 10 * 1024 * 1024:
-            return jsonify(error="Excel 文件不能超过 10 MB。"), 413
         try:
-            payload, audit = extract_bytes(source_bytes)
-        except Exception as error:
-            # Keep the last valid snapshot untouched on every import failure.
-            message = str(error) if isinstance(error, ExportError) else "无法读取此 Excel，请检查文件格式，并在 Excel/WPS 中重新计算、保存后再上传。"
-            return jsonify(error=message), 400
+            payload, audit, _filename = parse_workbook()
+        except UploadProblem as error:
+            return jsonify(error=str(error)), error.status
         try:
             uploaded_at = save_snapshot(payload, audit)
         except OSError:
             application.logger.exception("Cannot save imported data")
+            return jsonify(error="服务器未能保存数据，原有数据已保留。请检查服务器存储权限。"), 500
+        return jsonify(ok=True, audit=audit, uploadedAt=uploaded_at)
+
+    @application.post("/api/sync")
+    def sync_upload():
+        if not application.config["SYNC_TOKEN"]:
+            return jsonify(error="未启用同步接口。"), 404
+        if not valid_sync_token():
+            return jsonify(error="同步令牌不正确。"), 401
+        try:
+            payload, audit, filename = parse_workbook()
+        except UploadProblem as error:
+            return jsonify(error=str(error)), error.status
+        try:
+            uploaded_at = save_snapshot(payload, audit, {"kind": "remote-sync", "fileName": filename})
+        except OSError:
+            application.logger.exception("Cannot save synced data")
             return jsonify(error="服务器未能保存数据，原有数据已保留。请检查服务器存储权限。"), 500
         return jsonify(ok=True, audit=audit, uploadedAt=uploaded_at)
 
