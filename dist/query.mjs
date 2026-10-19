@@ -81,3 +81,17 @@ export function presetRange(dates, count = 0) {
   const from = start.toISOString().slice(0, 10);
   return { from: from < '2026-01-01' ? '2026-01-01' : from, to };
 }
+
+export function filterRows(rows, tab = 'all') {
+  if (tab === 'warning') return rows.filter(row => row.hasZeroWarning);
+  if (tab === 'missing') return rows.filter(row => row.recorded === 0);
+  return rows;
+}
+
+export function tabCounts(rows) {
+  return {
+    all: rows.length,
+    warning: rows.filter(row => row.hasZeroWarning).length,
+    missing: rows.filter(row => row.recorded === 0).length,
+  };
+}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { query, presetRange, makeDate, daysInMonth } from '../dist/query.mjs';
+import { query, presetRange, makeDate, daysInMonth, filterRows, tabCounts } from '../dist/query.mjs';
 
 const data = {
   dates: ['2026-10-17', '2026-10-16', '2026-10-15'],
@@ -144,4 +144,17 @@ test('金额从低到高排序，未记录排最后，保留真实零值', () =>
   assert.deepEqual(result.rows.map(row => row.id), ['real-zero','a','b','empty']);
   assert.equal(result.total, query(source).total);
   assert.deepEqual(query(source).rows.map(row => row.id), ['b','a','real-zero','empty']);
+});
+
+test('紧凑视图分类筛选与计数', () => {
+  const rows = [
+    {recorded: 2, hasZeroWarning: true},
+    {recorded: 0, hasZeroWarning: false},
+    {recorded: 1, hasZeroWarning: false},
+  ];
+  assert.deepEqual(tabCounts(rows), {all: 3, warning: 1, missing: 1});
+  assert.equal(filterRows(rows, 'warning').length, 1);
+  assert.equal(filterRows(rows, 'missing')[0].recorded, 0);
+  assert.equal(filterRows(rows, 'all').length, 3);
+  assert.equal(filterRows(rows, 'unknown').length, 3);
 });

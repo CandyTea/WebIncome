@@ -8,9 +8,9 @@ Flask 只读司机流水查询站：管理员上传 `.xlsx`，网站读取 `Shee
 
 ## 当前状态（已完成）
 
-- 功能：登录/权限、Excel 上传与校验、查询筛选、连续 0 流水预警、三种排序、手机/深色模式、本机自动同步。
+- 功能：登录/权限、Excel 上传与校验、查询筛选、连续 0 流水预警、三种排序、卡片/紧凑双视图、手机/深色模式、本机自动同步。
 - 查看权限：线上已取消查看密码（`WEBINCOME_PUBLIC_VIEW=1`），打开网址即可查询；上传 Excel 仍需管理员密码。任何拿到网址的人都能看到流水数据。
-- 测试：17 项 Python 测试、15 项前端测试全部通过。
+- 测试：17 项 Python 测试、16 项前端测试全部通过。
   - `python -m unittest discover -s tests -v`
   - `node --test tests/query.test.mjs`
 - Git：`main` 分支，私有仓库 `CandyTea/WebIncome`。
@@ -41,6 +41,7 @@ Flask 只读司机流水查询站：管理员上传 `.xlsx`，网站读取 `Shee
    - 读取 `.local/remote-sync.txt`（`url=`、`token=`、`watch=`）并运行 `remote_sync.py`。
 6. 文档：`README.md`、`部署说明.md`、`.env.example` 增加远程同步说明和 `WEBINCOME_SYNC_TOKEN`。
 7. 公开查看：`app.py` 新增 `WEBINCOME_PUBLIC_VIEW`；为 `1` 时查看页和查询接口无需登录，管理员上传仍需密码。`本地自动同步.cmd` 和线上 `/etc/webincome.env` 已设为 `1`。
+8. 查询页新增卡片/紧凑双视图（`dist/`）：紧凑视图一行一个司机，点行从底部弹出每日明细，顶部有“全部 / 预警 / 未记录”分类；视图和分类写入网址并记住选择。手机紧凑模式默认收起筛选区，原卡片视图保留。
 
 ## 尚未完成 / 下一步
 
@@ -57,6 +58,7 @@ Flask 只读司机流水查询站：管理员上传 `.xlsx`，网站读取 `Shee
 - `POST /api/sync`：错误令牌 401，正确令牌 200，导入统计与本地一致。
 - 本机 `remote_sync.py --once` 推送成功，服务器 `current.json` 的 `source.kind` 为 `remote-sync`。
 - 公开查看：`/` 和 `/data/sheet2.json` 未登录返回 200；`/admin` 返回 302；未登录上传 401；管理员登录后 `/admin` 返回 200。
+- 紧凑视图：390/375/360 像素无横向溢出；卡片/紧凑切换、预警/未记录标签、底部弹层（手机）和居中弹窗（桌面）、筛选展开收起均通过无头 Chrome 验证。
 - GitHub 推送成功（`ae67fe9..106e597`）。
 - 外网 `http://124.221.0.127:8765` 仍被腾讯云安全组拦截，待放行后即可访问。
 

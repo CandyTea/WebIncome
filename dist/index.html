@@ -21,6 +21,8 @@
   <main class="workspace">
     <aside class="filters" aria-labelledby="filter-heading">
       <div class="section-title"><h1 id="filter-heading">查询流水</h1><span class="readonly">只读</span></div>
+      <button type="button" id="filter-toggle" class="filter-toggle" aria-expanded="true" aria-controls="filters">收起筛选</button>
+      <p id="filter-summary" class="filter-summary" hidden></p>
       <form id="filters" autocomplete="off">
         <label for="search">司机姓名</label>
         <div class="search-field"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="search" name="q" type="search" placeholder="输入姓名，支持部分匹配" enterkeyhint="search" maxlength="60"></div>
@@ -71,14 +73,44 @@
           <dl class="metrics"><div><dt>匹配司机</dt><dd><span id="driver-count">—</span><small> 人</small></dd></div><div><dt>查询天数</dt><dd><span id="day-count">—</span><small> 天</small></dd></div></dl>
         </section>
         <div id="zero-alert" class="zero-alert" role="status" aria-live="polite" hidden><strong>0 流水预警</strong><p id="zero-alert-text"></p></div>
-        <div class="results-toolbar"><div><h2>司机流水</h2><p id="result-count" aria-live="polite" aria-atomic="true"></p></div><label class="sort-label" for="sort"><span class="sr-only">排序方式</span><select id="sort" aria-label="排序方式"><option value="amount">合计从高到低</option><option value="amount-asc">合计从低到高</option><option value="name">按姓名排序</option></select></label></div>
-        <div class="list-heading" aria-hidden="true"><span>司机 / 已记录天数</span><span>范围合计（元）</span></div>
-        <div id="driver-list"></div>
+        <div class="results-toolbar">
+          <div><h2>司机流水</h2><p id="result-count" aria-live="polite" aria-atomic="true"></p></div>
+          <div class="toolbar-controls">
+            <div class="view-switch" role="group" aria-label="查看方式">
+              <button type="button" data-view="cards" aria-pressed="true">卡片</button>
+              <button type="button" data-view="compact" aria-pressed="false">紧凑</button>
+            </div>
+            <label class="sort-label" for="sort"><span class="sr-only">排序方式</span><select id="sort" aria-label="排序方式"><option value="amount">合计从高到低</option><option value="amount-asc">合计从低到高</option><option value="name">按姓名排序</option></select></label>
+          </div>
+        </div>
+        <div id="classic-view">
+          <div class="list-heading" aria-hidden="true"><span>司机 / 已记录天数</span><span>范围合计（元）</span></div>
+          <div id="driver-list"></div>
+        </div>
+        <div id="compact-view" hidden>
+          <div class="compact-tabs" role="tablist" aria-label="司机分类">
+            <button type="button" role="tab" id="tab-all" data-tab="all" aria-selected="true">全部 <span class="tab-count" id="count-all">0</span></button>
+            <button type="button" role="tab" id="tab-warning" data-tab="warning" aria-selected="false">预警 <span class="tab-count" id="count-warning">0</span></button>
+            <button type="button" role="tab" id="tab-missing" data-tab="missing" aria-selected="false">未记录 <span class="tab-count" id="count-missing">0</span></button>
+          </div>
+          <div id="compact-list" class="compact-list"></div>
+        </div>
         <div id="empty" class="empty" hidden><h3>没有匹配的流水</h3><p>试试其他司机姓名，或调整查询时间。</p><button id="empty-reset" type="button">查看全部数据</button></div>
         <p class="data-note" id="data-note"></p>
       </div>
     </section>
   </main>
+  <dialog id="driver-dialog" class="driver-dialog" aria-labelledby="dialog-title">
+    <div class="dialog-grip" aria-hidden="true"></div>
+    <div class="dialog-head">
+      <div>
+        <h2 id="dialog-title"></h2>
+        <p id="dialog-meta" class="dialog-meta"></p>
+      </div>
+      <button type="button" id="dialog-close" class="dialog-close" aria-label="关闭明细">✕</button>
+    </div>
+    <div id="dialog-body" class="dialog-body"></div>
+  </dialog>
   <footer>预警按最新数据往前连续 N 天判断，默认 7 天，每天均有记录且为 0 才标红。预警天数独立于查询时间；空白或缺少日期不算 0 流水。</footer>
   <noscript>请在浏览器中启用 JavaScript 后查看流水。</noscript>
 </body>
