@@ -1,0 +1,23 @@
+[Unit]
+Description=Driver income portal
+After=network.target
+
+[Service]
+Type=simple
+User=webincome
+Group=webincome
+WorkingDirectory=/opt/webincome
+EnvironmentFile=/etc/webincome.env
+Environment=PYTHONUTF8=1
+ExecStart=/opt/webincome/.venv/bin/gunicorn --workers 2 --threads 2 --bind 127.0.0.1:8765 --timeout 120 'app:create_app()'
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/webincome
+
+[Install]
+WantedBy=multi-user.target

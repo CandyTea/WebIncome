@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f3f6fa">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>流水查询 · 司机每日流水</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./portal.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <a class="skip" href="#results">跳到查询结果</a>
+  <header class="topbar">
+    <div class="brand"><img src="./icon.svg" width="40" height="40" alt=""><div><strong>流水查询</strong><span>司机每日流水</span></div></div>
+    <div class="topbar-actions"><div class="coverage" id="coverage">正在读取数据</div><a class="admin-link" href="/admin">上传 Excel</a></div>
+  </header>
+  <main class="workspace">
+    <aside class="filters" aria-labelledby="filter-heading">
+      <div class="section-title"><h1 id="filter-heading">查询流水</h1><span class="readonly">只读</span></div>
+      <form id="filters" autocomplete="off">
+        <label for="search">司机姓名</label>
+        <div class="search-field"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="search" name="q" type="search" placeholder="输入姓名，支持部分匹配" enterkeyhint="search" maxlength="60"></div>
+        <fieldset>
+          <legend>查询时间 <span class="fixed-year">2026 年</span></legend>
+          <div class="presets" aria-label="快捷时间范围">
+            <button type="button" data-days="1">最近 1 天</button>
+            <button type="button" data-days="3">最近 3 天</button>
+            <button type="button" data-days="7">最近 7 天</button>
+            <button type="button" data-days="14">最近 14 天</button>
+            <button type="button" id="custom-toggle" aria-expanded="false" aria-controls="custom-days-panel">自定义天数</button>
+            <button type="button" data-days="0">全部数据</button>
+          </div>
+          <div id="custom-days-panel" class="custom-days" hidden>
+            <label for="custom-days">最近多少天</label>
+            <div class="custom-days-controls"><input id="custom-days" type="number" min="1" max="365" step="1" value="5" inputmode="numeric" aria-describedby="custom-days-hint"><span>天</span><button type="button" id="apply-days">应用</button></div>
+            <p id="custom-days-hint">输入 1 至 365 天。</p>
+            <p id="custom-days-error" class="error" role="alert" hidden></p>
+          </div>
+          <p class="range-help">“最近”以最新数据日期为准。</p>
+          <p id="range-preview" class="range-preview"></p>
+          <details id="manual-range" class="manual-range">
+            <summary>自选起止日期</summary>
+            <div class="date-fields">
+              <div class="date-row"><span>开始日期</span><div class="month-day"><select id="from-month" aria-label="开始月份"></select><select id="from-day" aria-label="开始日"></select></div></div>
+              <div class="date-row"><span>结束日期</span><div class="month-day"><select id="to-month" aria-label="结束月份"></select><select id="to-day" aria-label="结束日"></select></div></div>
+            </div>
+          </details>
+        </fieldset>
+        <fieldset class="warning-settings">
+          <legend>0 流水预警</legend>
+          <label for="warning-days">连续几天为 0 才报红</label>
+          <div class="warning-controls"><input id="warning-days" type="number" min="1" max="365" step="1" value="7" inputmode="numeric" aria-describedby="warning-hint"><span>天</span><button id="apply-warning" type="button">应用</button></div>
+          <p class="range-help" id="warning-hint">默认 7 天，按最新数据往前判断；缺少记录不报红。</p>
+          <p id="warning-rule-error" class="error" role="alert" hidden></p>
+        </fieldset>
+        <p id="filter-error" class="error" role="alert" hidden></p>
+        <button class="reset" type="reset">重置筛选</button>
+      </form>
+      <div class="filter-note"><strong>查看每日明细</strong><p>点开司机姓名，即可查看所选时间内每天的流水。</p></div>
+    </aside>
+    <section class="content" aria-label="流水结果">
+      <div id="load-status" class="load-status" role="status">正在读取流水数据…</div>
+      <div id="load-error" class="load-status error" role="alert" hidden><p id="load-error-text"></p><button type="button" id="retry">重新加载</button> <a class="view-link" href="/admin">上传 Excel</a></div>
+      <div id="results" hidden tabindex="-1">
+        <section class="overview" aria-label="查询汇总">
+          <div class="total"><p>所选范围流水合计 <span>元</span></p><div id="total-amount">—</div><span id="selected-range"></span></div>
+          <dl class="metrics"><div><dt>匹配司机</dt><dd><span id="driver-count">—</span><small> 人</small></dd></div><div><dt>查询天数</dt><dd><span id="day-count">—</span><small> 天</small></dd></div></dl>
+        </section>
+        <div id="zero-alert" class="zero-alert" role="status" aria-live="polite" hidden><strong>0 流水预警</strong><p id="zero-alert-text"></p></div>
+        <div class="results-toolbar"><div><h2>司机流水</h2><p id="result-count" aria-live="polite" aria-atomic="true"></p></div><label class="sort-label" for="sort"><span class="sr-only">排序方式</span><select id="sort" aria-label="排序方式"><option value="amount">合计从高到低</option><option value="amount-asc">合计从低到高</option><option value="name">按姓名排序</option></select></label></div>
+        <div class="list-heading" aria-hidden="true"><span>司机 / 已记录天数</span><span>范围合计（元）</span></div>
+        <div id="driver-list"></div>
+        <div id="empty" class="empty" hidden><h3>没有匹配的流水</h3><p>试试其他司机姓名，或调整查询时间。</p><button id="empty-reset" type="button">查看全部数据</button></div>
+        <p class="data-note" id="data-note"></p>
+      </div>
+    </section>
+  </main>
+  <footer>预警按最新数据往前连续 N 天判断，默认 7 天，每天均有记录且为 0 才标红。预警天数独立于查询时间；空白或缺少日期不算 0 流水。</footer>
+  <noscript>请在浏览器中启用 JavaScript 后查看流水。</noscript>
+</body>
+</html>

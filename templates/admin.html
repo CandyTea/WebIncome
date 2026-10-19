@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="csrf-token" content="{{ csrf }}">
+  <title>上传 Excel · 流水查询</title>
+  <link rel="icon" href="/icon.svg">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/portal.css">
+  <script type="module" src="/admin.mjs"></script>
+</head>
+<body>
+<main class="portal">
+  <a class="back-link" href="/">返回流水查询</a>
+  <div class="section-title">
+    <h1>上传 Excel</h1>
+    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">退出登录</button></form>
+  </div>
+  <p class="intro">直接上传原工作簿，网站自动读取 Sheet2 中 Z 列之前的数据，并排除红色姓名的司机。</p>
+  {% if local_sync %}
+  <section class="sync-panel" aria-labelledby="sync-heading">
+    <h2 id="sync-heading">本地自动同步已开启</h2>
+    <p>文件：<strong>{{ local_sync.fileName }}</strong></p>
+    <p>在 Excel/WPS 中修改并保存这份文件，网页会在几秒后自动更新。无需重复上传。</p>
+    <p id="sync-status" role="status" aria-live="polite">{{ local_sync.message }}</p>
+    <p class="subtle" id="sync-time"></p>
+  </section>
+  {% endif %}
+  <div class="upload-rules"><strong>导入范围：A:Y，不含 Z 列</strong><p>保留真实零值和空白。每次更新替换当前网页数据，不累加旧文件的日期。</p></div>
+  <form id="upload-form">
+    <label for="workbook">选择 Excel 工作簿</label>
+    <input id="workbook" name="workbook" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+    <p class="subtle">支持 .xlsx，最大 10 MB。请在 Excel 或 WPS 中计算并保存后上传。</p>
+    <button class="primary" id="upload-button" type="submit">上传并更新流水</button>
+  </form>
+  <div id="upload-status" role="status" aria-live="polite" hidden></div>
+  <div id="upload-error" class="error" role="alert" hidden></div>
+  <section class="current-data">
+    <h2>当前网页数据</h2>
+    <div id="current-info">
+      {% if audit %}
+      <p>{{ audit.dateFrom }} 至 {{ audit.dateTo }}</p>
+      <p>{{ audit.included_drivers }} 名司机，{{ audit.dateColumns }} 天，合计 {{ '%.2f'|format(audit.total_amount_cents / 100) }} 元</p>
+      <p>已排除 {{ audit.excluded_red_drivers }} 名红色姓名司机。</p>
+      {% else %}<p>尚未上传 Excel。</p>{% endif %}
+    </div>
+  </section>
+  <a class="view-link" id="view-result" href="/">查看流水</a>
+  <p class="subtle">导入失败时保留上一次成功的数据。原始工作簿不长期保存在服务器中。</p>
+</main>
+</body>
+</html>

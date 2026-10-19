@@ -1,0 +1,12 @@
+# Keep the original workbook and local inspection output off GitHub.
+*.xlsx
+*.xls
+~$*
+.local/
+__pycache__/
+.venv/
+.env
+.env.*
+!.env.example
+dist/data/
+*.log
