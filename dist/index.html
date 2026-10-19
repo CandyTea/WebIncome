@@ -21,7 +21,7 @@
   <main class="workspace">
     <aside class="filters" aria-labelledby="filter-heading">
       <div class="section-title"><h1 id="filter-heading">查询流水</h1><span class="readonly">只读</span></div>
-      <button type="button" id="filter-toggle" class="filter-toggle" aria-expanded="true" aria-controls="filters">收起筛选</button>
+      <button type="button" id="filter-toggle" class="filter-toggle" aria-expanded="true" aria-controls="filters overview">收起筛选与合计</button>
       <p id="filter-summary" class="filter-summary" hidden></p>
       <form id="filters" autocomplete="off">
         <label for="search">司机姓名</label>
@@ -42,7 +42,7 @@
             <p id="custom-days-hint">输入 1 至 365 天。</p>
             <p id="custom-days-error" class="error" role="alert" hidden></p>
           </div>
-          <p class="range-help">“最近”以最新数据日期为准。</p>
+          <p class="range-help">默认最近 3 天，从北京时间昨日往前计算，不含今天。</p>
           <p id="range-preview" class="range-preview"></p>
           <details id="manual-range" class="manual-range">
             <summary>自选起止日期</summary>
@@ -62,13 +62,13 @@
         <p id="filter-error" class="error" role="alert" hidden></p>
         <button class="reset" type="reset">重置筛选</button>
       </form>
-      <div class="filter-note"><strong>查看每日明细</strong><p>点开司机姓名，即可查看所选时间内每天的流水。</p></div>
+      <div class="filter-note"><strong>对比每日流水</strong><p>日期行固定显示，向下滑动即可对比司机每日流水。点姓名旁的星号可重点关注。</p></div>
     </aside>
     <section class="content" aria-label="流水结果">
       <div id="load-status" class="load-status" role="status">正在读取流水数据…</div>
       <div id="load-error" class="load-status error" role="alert" hidden><p id="load-error-text"></p><button type="button" id="retry">重新加载</button> <a class="view-link" href="/admin">上传 Excel</a></div>
       <div id="results" hidden tabindex="-1">
-        <section class="overview" aria-label="查询汇总">
+        <section id="overview" class="overview" aria-label="查询汇总">
           <div class="total"><p>所选范围流水合计 <span>元</span></p><div id="total-amount">—</div><span id="selected-range"></span></div>
           <dl class="metrics"><div><dt>匹配司机</dt><dd><span id="driver-count">—</span><small> 人</small></dd></div><div><dt>查询天数</dt><dd><span id="day-count">—</span><small> 天</small></dd></div></dl>
         </section>
@@ -84,8 +84,11 @@
           </div>
         </div>
         <div id="classic-view">
-          <div class="list-heading" aria-hidden="true"><span>司机 / 已记录天数</span><span>范围合计（元）</span></div>
-          <div id="driver-list"></div>
+          <p class="comparison-hint">日期行与姓名列固定；点司机查看明细，点星号重点关注。</p>
+          <div id="comparison-frame" class="comparison-frame">
+            <div class="comparison-header" aria-hidden="true"><div id="comparison-header-viewport" class="comparison-header-viewport"></div></div>
+            <div id="driver-list" class="comparison-scroll" tabindex="0" role="region" aria-label="司机每日流水对比，可左右滚动"></div>
+          </div>
         </div>
         <div id="compact-view" hidden>
           <div class="compact-tabs" role="tablist" aria-label="司机分类">
@@ -97,6 +100,7 @@
         </div>
         <div id="empty" class="empty" hidden><h3>没有匹配的流水</h3><p>试试其他司机姓名，或调整查询时间。</p><button id="empty-reset" type="button">查看全部数据</button></div>
         <p class="data-note" id="data-note"></p>
+        <p id="favorite-status" class="data-note" role="status" aria-live="polite"></p>
       </div>
     </section>
   </main>

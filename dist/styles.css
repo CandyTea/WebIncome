@@ -116,3 +116,58 @@
   body.view-compact .results-toolbar{margin-top:12px;margin-bottom:10px}
   body.view-compact .toolbar-controls{width:100%}
 }
+
+/* Daily comparison cards and local, reversible driver stars. */
+:root{--star:#8b5a00;--star-bg:#fff5d6}
+.filter-toggle{display:block;width:100%;margin:0 0 16px;font-size:.875rem}
+.filter-summary{display:block;margin:0 0 16px;font-size:.8125rem;color:var(--muted)}
+.filters.is-collapsed #filters,.filters.is-collapsed .filter-note{display:none}
+.filters.is-collapsed .section-title{margin-bottom:12px}
+.favorite-button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;min-width:44px;width:44px;min-height:44px;height:44px;padding:10px;border:0;background:transparent;color:var(--muted)}
+.favorite-button svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round}
+.favorite-button[aria-pressed="true"]{color:var(--star);background:var(--star-bg)}
+.favorite-button[aria-pressed="true"] svg{fill:currentColor}
+.favorite-button:hover{background:var(--soft)}
+.comparison-hint{font-size:.75rem;color:var(--muted);margin-bottom:10px;line-height:1.7}
+.comparison-scroll{width:100%;overflow:auto;border:1px solid var(--line);background:var(--surface);-webkit-overflow-scrolling:touch}
+.comparison-table{width:100%;min-width:calc(7rem + var(--date-count,3)*4.375rem);table-layout:fixed;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums;font-size:.8125rem}
+.comparison-table .name-column{width:7rem}
+.comparison-table th,.comparison-table td{text-align:right;padding:12px 6px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);background:var(--surface)}
+.comparison-table tr>:last-child{border-right:0}
+.comparison-table tbody tr:last-child>*{border-bottom:0}
+.comparison-table thead th{position:sticky;top:0;z-index:2;background:var(--hover);font-weight:600;white-space:nowrap;box-shadow:0 1px var(--line)}
+.comparison-table .weekday{display:block;margin-top:2px;font-size:.6875rem;font-weight:400;color:var(--muted)}
+.comparison-table .comparison-name{text-align:left;position:sticky;left:0;z-index:1;padding:6px 4px;box-shadow:1px 0 var(--line)}
+.comparison-table thead .comparison-name{z-index:3;padding-left:12px;background:var(--hover)}
+.driver-identity{display:grid;grid-template-columns:44px minmax(0,1fr);align-items:center}
+.driver-name-open{min-height:44px;padding:4px 0;border:0;border-radius:4px;background:transparent;text-align:left;font-size:.875rem;font-weight:600;overflow-wrap:anywhere}
+.comparison-table .unrecorded{color:var(--muted);font-size:.75rem}
+.comparison-table .zero-cell{background:var(--warning-bg);color:var(--warning-text);font-weight:600}
+.comparison-table .has-zero .comparison-name{box-shadow:inset 3px 0 var(--warning-text),1px 0 var(--line)}
+.comparison-table .zero-badge{font-size:.6875rem;margin:2px 3px 4px;white-space:normal}
+.compact-row{grid-template-columns:44px minmax(0,1fr);gap:4px;padding:4px 8px}
+.compact-open{display:grid;grid-template-columns:minmax(0,1fr) auto 10px;gap:10px;align-items:center;width:100%;min-height:56px;padding:8px 4px;border:0;border-radius:6px;background:transparent;text-align:left}
+.compact-list:empty,#favorite-status:empty{display:none}
+.view-switch button,.compact-tabs button{min-height:44px}
+@media(max-width:700px){
+  body.view-compact .filter-toggle{min-height:44px;font-size:.75rem;padding:6px}
+  .compact-row{padding:4px 6px}
+}
+@media(prefers-color-scheme:dark){:root{--star:#f7cc6d;--star-bg:#3d3420}}
+
+/* Let the page scroll naturally while the date strip stays at the top. */
+.comparison-frame{overflow-anchor:none}
+.zero-alert p{min-width:0;overflow-wrap:anywhere}
+.comparison-header{position:sticky;top:env(safe-area-inset-top,0px);z-index:4;border:1px solid var(--line);border-radius:12px 12px 0 0;background:var(--hover)}
+.comparison-header-viewport{overflow:hidden;border-radius:11px 11px 0 0}
+.comparison-header .comparison-table{margin:0}
+.comparison-header th{border-bottom:0}
+.comparison-scroll{max-height:none;border-top:0;border-radius:0 0 12px 12px;scroll-padding-top:80px}
+.comparison-accessible-head th{position:static}
+.favorite-button,.driver-name-open{scroll-margin-top:80px}
+@media(max-width:700px){
+  .filters.is-collapsed{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;padding:10px 12px;margin-bottom:10px}
+  .filters.is-collapsed .section-title{display:none}
+  .filters.is-collapsed .filter-toggle{width:auto;margin:0;padding:6px;font-size:.75rem;min-height:44px}
+  .filters.is-collapsed .filter-summary{grid-column:2;margin:0;padding:0;border:0;background:transparent;font-size:.75rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}

@@ -1,4 +1,4 @@
-import { query, presetRange, daysInMonth, makeDate, filterRows, tabCounts } from './query.mjs';
+import { query, presetRange, daysInMonth, makeDate, filterRows, tabCounts, rangeDates, favoriteFirst, shanghaiToday } from './query.mjs';
 
 const $ = id => document.getElementById(id);
 const money = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -7,7 +7,7 @@ const formatDate = iso => iso.replaceAll('-', '/');
 let data;
 let dataVersion = null;
 let refreshing = false;
-let activeDays = 0;
+let activeDays = 3;
 let warningDays = 7;
 let viewMode = 'cards';
 let activeTab = 'all';
@@ -16,6 +16,13 @@ let lastDialogFocus = null;
 let filtersCollapsed = false;
 const isMobile = () => matchMedia('(max-width: 700px)').matches;
 const standardDays = new Set([0, 1, 3, 7, 14]);
+const favoriteKey = 'webincome.favorites.v1';
+let favorites = new Set();
+try {
+  const stored = JSON.parse(localStorage.getItem(favoriteKey) || '[]');
+  if (Array.isArray(stored)) favorites = new Set(stored.filter(id => typeof id === 'string'));
+} catch { /* Keep starring available even when browser storage is unavailable. */ }
+let rangeDay = shanghaiToday();
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -91,34 +98,101 @@ function dailyTable(driver) {
   return table;
 }
 
-function driverView(driver, days) {
-  const detail = el('details', 'driver');
-  if (driver.hasZeroWarning) detail.classList.add('has-zero');
-  detail.dataset.driverId = driver.id;
-  const summary = el('summary');
-  summary.append(el('span', 'avatar', driver.name.slice(0, 1)));
-  summary.firstElementChild.setAttribute('aria-hidden', 'true');
-  const info = el('div');
-  info.append(el('div', 'driver-name', driver.name), el('div', 'driver-days', `已记录 ${driver.recorded} / ${days} 天`));
-  if (driver.hasZeroWarning) info.append(el('span', 'zero-badge', `连续 ${warningDays} 天 0 流水`));
-  const totalClass = driver.hasZeroWarning && driver.recorded > 0 && driver.zeroDays === driver.recorded ? 'driver-total zero-amount' : 'driver-total';
-  summary.append(info, el('span', totalClass, driver.recorded ? formatMoney(driver.total) : '未记录'));
+function favoriteButton(driver) {
+  const button = el('button', 'favorite-button');
+  const marked = favorites.has(driver.id);
+  button.type = 'button';
+  button.dataset.favoriteId = driver.id;
+  button.setAttribute('aria-pressed', String(marked));
+  button.setAttribute('aria-label', `${marked ? '取消星标' : '标星关注'}：${driver.name}`);
+  button.title = marked ? '取消星标' : '标星关注';
   const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  icon.setAttribute('viewBox', '0 0 20 20');
+  icon.setAttribute('viewBox', '0 0 24 24');
   icon.setAttribute('aria-hidden', 'true');
-  icon.classList.add('chevron');
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', 'm5 7 5 5 5-5');
+  path.setAttribute('d', 'm12 3 2.8 5.7 6.3.9-4.6 4.5 1.1 6.3L12 17.4l-5.6 3 1.1-6.3-4.6-4.5 6.3-.9Z');
   icon.append(path);
-  summary.append(icon);
-  const daily = el('div', 'daily');
-  daily.append(el('h3', '', `${driver.name}的每日流水`), dailyTable(driver));
-  detail.append(summary, daily);
-  return detail;
+  button.append(icon);
+  button.addEventListener('click', () => {
+    if (favorites.has(driver.id)) favorites.delete(driver.id);
+    else favorites.add(driver.id);
+    let saved = true;
+    try { localStorage.setItem(favoriteKey, JSON.stringify([...favorites])); } catch { saved = false; }
+    render();
+    const container = viewMode === 'cards' ? $('driver-list') : $('compact-list');
+    [...container.querySelectorAll('[data-favorite-id]')].find(item => item.dataset.favoriteId === driver.id)?.focus({ preventScroll: true });
+    $('favorite-status').textContent = saved ? `${driver.name}${favorites.has(driver.id) ? '已标星，优先显示' : '已取消星标'}。星标仅保存在当前浏览器。` : '当前浏览器无法保存星标，关闭页面后标记会丢失。';
+  });
+  return button;
+}
+
+function renderComparison(result, dates) {
+  const container = $('driver-list');
+  const { scrollTop, scrollLeft } = container;
+  container.replaceChildren();
+  container.hidden = !result.days.length || !result.rows.length;
+  $('comparison-frame').hidden = container.hidden;
+  document.querySelector('.comparison-hint').hidden = container.hidden;
+  if (container.hidden) return;
+  const table = el('table', 'comparison-table');
+  table.style.setProperty('--date-count', dates.length);
+  table.append(el('caption', 'sr-only', '司机每日流水对比，金额单位为元；星标司机优先显示。'));
+  const columns = el('colgroup');
+  columns.append(el('col', 'name-column'));
+  for (const _date of dates) columns.append(el('col'));
+  table.append(columns);
+  const head = el('thead');
+  const heading = el('tr');
+  const nameHeading = el('th', 'comparison-name', '司机 / 元');
+  nameHeading.scope = 'col';
+  heading.append(nameHeading);
+  for (const date of dates) {
+    const cell = el('th', '', `${Number(date.slice(5, 7))}/${Number(date.slice(8))}`);
+    cell.scope = 'col';
+    cell.append(el('span', 'weekday', ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(`${date}T00:00:00Z`).getUTCDay()]));
+    heading.append(cell);
+  }
+  head.append(heading);
+  const headerTable = el('table', 'comparison-table');
+  headerTable.style.setProperty('--date-count', dates.length);
+  headerTable.append(columns.cloneNode(true));
+  headerTable.append(head.cloneNode(true));
+  $('comparison-header-viewport').replaceChildren(headerTable);
+  // The original table retains its column headers for assistive technology.
+  head.className = 'sr-only comparison-accessible-head';
+  table.append(head);
+  const body = el('tbody');
+  for (const driver of result.rows) {
+    const row = el('tr', driver.hasZeroWarning ? 'has-zero' : '');
+    row.dataset.driverId = driver.id;
+    const nameCell = el('th', 'comparison-name');
+    nameCell.scope = 'row';
+    const identity = el('div', 'driver-identity');
+    const name = el('button', 'driver-name-open', driver.name);
+    name.type = 'button';
+    name.setAttribute('aria-label', `查看${driver.name}的每日明细`);
+    name.addEventListener('click', () => openDriver(driver, dates.length));
+    identity.append(favoriteButton(driver), name);
+    nameCell.append(identity);
+    if (driver.hasZeroWarning) nameCell.append(el('span', 'zero-badge', `连续 ${warningDays} 天为 0`));
+    row.append(nameCell);
+    for (const record of driver.daily) {
+      const cell = el('td', record.amountCents === null ? 'unrecorded' : '', record.amountCents === null ? '未记录' : formatMoney(record.amountCents));
+      if (record.zeroWarning) cell.classList.add('zero-cell');
+      row.append(cell);
+    }
+    body.append(row);
+  }
+  table.append(body);
+  container.append(table);
+  container.scrollTop = scrollTop;
+  container.scrollLeft = scrollLeft;
+  $('comparison-header-viewport').scrollLeft = container.scrollLeft;
 }
 
 function renderCompact(result) {
-  const counts = tabCounts(result.rows);
+  const rowsWithData = result.days.length ? result.rows : [];
+  const counts = tabCounts(rowsWithData);
   $('count-all').textContent = counts.all;
   $('count-warning').textContent = counts.warning;
   $('count-missing').textContent = counts.missing;
@@ -127,13 +201,12 @@ function renderCompact(result) {
     button.setAttribute('aria-selected', String(selected));
     button.tabIndex = selected ? 0 : -1;
   }
-  const rows = filterRows(result.rows, activeTab);
+  const rows = filterRows(rowsWithData, activeTab);
   const list = $('compact-list');
   list.replaceChildren();
-  const days = result.days.length;
+  const days = result.comparisonDates.length;
   for (const driver of rows) {
-    const row = el('button', 'compact-row');
-    row.type = 'button';
+    const row = el('div', 'compact-row');
     row.dataset.driverId = driver.id;
     if (driver.hasZeroWarning) row.classList.add('has-zero');
     const main = el('span', 'compact-main');
@@ -144,9 +217,12 @@ function renderCompact(result) {
     main.append(sub);
     const total = el('span', driver.recorded ? 'compact-total' : 'compact-total unrecorded', driver.recorded ? formatMoney(driver.total) : '未记录');
     if (driver.hasZeroWarning && driver.recorded > 0 && driver.zeroDays === driver.recorded) total.classList.add('zero-amount');
-    row.append(main, total, el('span', 'compact-chevron', '›'));
-    row.setAttribute('aria-label', `${driver.name}，${driver.recorded ? `已记录 ${driver.recorded} / ${days} 天，合计 ${formatMoney(driver.total)} 元` : '范围内未记录'}，点开查看每日明细`);
-    row.addEventListener('click', () => openDriver(driver, days));
+    const open = el('button', 'compact-open');
+    open.type = 'button';
+    open.append(main, total, el('span', 'compact-chevron', '›'));
+    open.setAttribute('aria-label', `${driver.name}，${driver.recorded ? `已记录 ${driver.recorded} / ${days} 天，合计 ${formatMoney(driver.total)} 元` : '范围内未记录'}，点开查看每日明细`);
+    open.addEventListener('click', () => openDriver(driver, days));
+    row.append(favoriteButton(driver), open);
     list.append(row);
   }
   if ($('driver-dialog').open && selectedDriverId) {
@@ -196,19 +272,19 @@ function setView(mode) {
   viewMode = mode;
   try { localStorage.setItem('webincome.view', mode); } catch { /* Private mode can reject storage. */ }
   applyViewMode();
-  setFiltersCollapsed(mode === 'compact' && isMobile());
+  if (mode === 'compact' && isMobile()) setFiltersCollapsed(true);
   if (data) render();
 }
 
 function setFiltersCollapsed(collapsed) {
   filtersCollapsed = collapsed;
-  const mobile = isMobile();
-  const isCollapsed = collapsed && mobile;
+  const isCollapsed = collapsed;
   document.querySelector('.filters').classList.toggle('is-collapsed', isCollapsed);
   const toggle = $('filter-toggle');
   toggle.setAttribute('aria-expanded', String(!isCollapsed));
-  toggle.textContent = isCollapsed ? '展开筛选' : '收起筛选';
+  toggle.textContent = isCollapsed ? '展开筛选与合计' : '收起筛选与合计';
   $('filter-summary').hidden = !isCollapsed;
+  $('overview').hidden = isCollapsed;
 }
 
 function updateFilterSummary() {
@@ -235,20 +311,19 @@ function render() {
   }
   $('filter-error').hidden = true;
   $('results').hidden = false;
-  const openDrivers = new Set([...document.querySelectorAll('.driver[open]')].map(node => node.dataset.driverId));
-  $('driver-list').replaceChildren();
+  result.comparisonDates = rangeDates(state.from, state.to);
+  result.rows = favoriteFirst(result.rows, favorites);
   for (const driver of result.rows) {
-    if (!result.days.length) continue;
-    const node = driverView(driver, result.days.length);
-    node.open = openDrivers.has(driver.id) || result.rows.length === 1;
-    $('driver-list').append(node);
+    const daily = new Map(driver.daily.map(record => [record.date, record]));
+    driver.daily = result.comparisonDates.map(date => daily.get(date) || { driverId: driver.id, date, amountCents: null, zeroWarning: false });
   }
+  renderComparison(result, result.comparisonDates);
   $('total-amount').textContent = formatMoney(result.total);
   const recordedCount = result.rows.reduce((count, driver) => count + driver.recorded, 0);
   $('total-amount').classList.toggle('zero-overview', recordedCount > 0 && result.zeroRecords === recordedCount && result.warningDrivers === result.rows.length);
   $('selected-range').textContent = `${formatDate(state.from)} 至 ${formatDate(state.to)}`;
   $('driver-count').textContent = result.days.length ? result.rows.length : 0;
-  $('day-count').textContent = result.days.length;
+  $('day-count').textContent = result.days.length ? result.comparisonDates.length : 0;
   $('result-count').textContent = result.days.length ? `共 ${result.rows.length} 名司机，点开查看每日明细` : '所选范围没有数据';
   const visibleRows = viewMode === 'compact' ? filterRows(result.rows, activeTab) : result.rows;
   const hasVisibleRows = result.days.length > 0 && visibleRows.length > 0;
@@ -265,11 +340,11 @@ function render() {
     emptyHeading.textContent = '没有匹配的流水';
     emptyText.textContent = '试试其他司机姓名，或调整查询时间。';
   }
-  $('data-note').textContent = result.rows.length && result.days.length ? `已核验的范围内流水${result.missing ? `，其中 ${result.missing} 项未记录` : ''}。` : '';
+  const missingCount = result.rows.reduce((sum, driver) => sum + driver.daily.filter(record => record.amountCents === null).length, 0);
+  $('data-note').textContent = result.rows.length && result.days.length ? `已核验的范围内流水${missingCount ? `，其中 ${missingCount} 项未记录（含空白及未上传的日期）` : ''}。` : '';
   $('zero-alert').hidden = result.warningDrivers === 0 || result.days.length === 0;
   $('zero-alert-text').textContent = result.warningRange ? `${result.warningDrivers} 名司机最近连续 ${warningDays} 天每天流水均为 0（${formatDate(result.warningRange.from)} 至 ${formatDate(result.warningRange.to)}）。` : '';
   $('warning-hint').textContent = result.warningRange ? `当前规则：最近连续 ${warningDays} 天每天均为 0 才报红。预警范围 ${formatDate(result.warningRange.from)} 至 ${formatDate(result.warningRange.to)}，与查询时间独立。` : '按最新数据往前判断；缺少记录不报红。';
-  document.querySelector('.list-heading').hidden = !$('empty').hidden;
   renderCompact(result);
   updateFilterSummary();
   for (const button of document.querySelectorAll('[data-days]')) {
@@ -279,7 +354,7 @@ function render() {
   const url = new URL(location.href);
   for (const key of ['q', 'from', 'to', 'sort', 'days', 'warnDays', 'view', 'tab']) url.searchParams.delete(key);
   if (state.search.trim()) url.searchParams.set('q', state.search.trim());
-  if (activeDays !== null && activeDays > 0) url.searchParams.set('days', String(activeDays));
+  if (activeDays !== null) url.searchParams.set('days', String(activeDays));
   else if (activeDays === null) {
     url.searchParams.set('from', state.from);
     url.searchParams.set('to', state.to);
@@ -294,8 +369,8 @@ function render() {
 function reset() {
   if (!data) return;
   $('search').value = '';
-  setDates(presetRange(data.dates, 0));
-  activeDays = 0;
+  setDates(presetRange(data.dates, 3));
+  activeDays = 3;
   $('manual-range').open = false;
   $('custom-days-panel').hidden = true;
   $('custom-toggle').setAttribute('aria-expanded', 'false');
@@ -335,7 +410,7 @@ async function load(initial = true) {
       warningDays = Number.isInteger(ruleDays) && ruleDays >= 1 && ruleDays <= 365 ? ruleDays : 7;
       $('warning-days').value = String(warningDays);
       const count = Number(params.get('days'));
-      if (params.has('days') && Number.isInteger(count) && count >= 1 && count <= 365) {
+      if (params.has('days') && Number.isInteger(count) && count >= 0 && count <= 365) {
         activeDays = count;
         setDates(presetRange(data.dates, count));
         if (!standardDays.has(count)) {
@@ -350,8 +425,8 @@ async function load(initial = true) {
           activeDays = null;
           setDates(selected);
           $('manual-range').open = true;
-        } catch { activeDays = 0; setDates(range); }
-      } else { activeDays = 0; setDates(range); }
+        } catch { activeDays = 3; setDates(presetRange(data.dates, 3)); }
+      } else { activeDays = 3; setDates(presetRange(data.dates, 3)); }
       if (['name', 'amount-asc'].includes(params.get('sort'))) $('sort').value = params.get('sort');
     }
     $('coverage').textContent = `数据截至 ${formatDate(range.to)}`;
@@ -368,6 +443,9 @@ async function load(initial = true) {
 }
 
 $('filters').addEventListener('submit', event => event.preventDefault());
+$('driver-list').addEventListener('scroll', () => {
+  $('comparison-header-viewport').scrollLeft = $('driver-list').scrollLeft;
+}, { passive: true });
 $('search').addEventListener('input', render);
 $('sort').addEventListener('change', render);
 for (const prefix of ['from', 'to']) {
@@ -456,6 +534,9 @@ async function checkForUpdates() {
   if (refreshing || document.hidden) return;
   refreshing = true;
   try {
+    const today = shanghaiToday();
+    if (rangeDay !== today && data && activeDays > 0) applyRecent(activeDays);
+    rangeDay = today;
     const response = await fetch('/api/data-status', { cache: 'no-store' });
     if (!response.ok) return;
     const state = await response.json();
@@ -465,3 +546,11 @@ async function checkForUpdates() {
 }
 setInterval(checkForUpdates, 4000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdates(); });
+window.addEventListener('storage', event => {
+  if (event.key !== favoriteKey && event.key !== null) return;
+  try {
+    const stored = JSON.parse(localStorage.getItem(favoriteKey) || '[]');
+    favorites = new Set(Array.isArray(stored) ? stored.filter(id => typeof id === 'string') : []);
+    if (data) render();
+  } catch { /* Ignore invalid storage written by another tab. */ }
+});

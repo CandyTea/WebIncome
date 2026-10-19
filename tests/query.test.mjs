@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { query, presetRange, makeDate, daysInMonth, filterRows, tabCounts } from '../dist/query.mjs';
+import { query, presetRange, makeDate, daysInMonth, filterRows, tabCounts, rangeDates, shanghaiToday, favoriteFirst } from '../dist/query.mjs';
 
 const data = {
   dates: ['2026-10-17', '2026-10-16', '2026-10-15'],
@@ -29,8 +29,8 @@ test('零值算作已记录，空白算作未记录', () => {
   assert.equal(result.rows[0].missing, 1);
   assert.equal(result.rows[0].daily[1].amountCents, 0);
 });
-test('最近七天按数据最新日期计算，跨月准确', () => {
-  assert.deepEqual(presetRange(['2026-09-24','2026-10-02'], 7), {from:'2026-09-26',to:'2026-10-02'});
+test('最近七天从昨日往前计算，跨月准确', () => {
+  assert.deepEqual(presetRange(['2026-09-24','2026-10-02'], 7, '2026-10-03'), {from:'2026-09-26',to:'2026-10-02'});
 });
 test('空搜索结果与错误日期范围明确处理', () => {
   assert.equal(query(data, {search:'不存在'}).rows.length, 0);
@@ -43,20 +43,43 @@ test('统计使用整数分，排序后合计保持一致', () => {
   assert.equal(query(data, {sort:'name'}).total, result.total);
 });
 
-test('最近一天、三天和自定义五天都包含最新数据日', () => {
-  assert.deepEqual(presetRange(data.dates, 1), {from:'2026-10-17',to:'2026-10-17'});
-  assert.deepEqual(presetRange(data.dates, 3), {from:'2026-10-15',to:'2026-10-17'});
-  assert.deepEqual(presetRange(data.dates, 5), {from:'2026-10-13',to:'2026-10-17'});
+test('20号最近三天固定为19、18、17号，不含当天或未来列', () => {
+  assert.deepEqual(presetRange(data.dates, 1, '2026-10-20'), {from:'2026-10-19',to:'2026-10-19'});
+  assert.deepEqual(presetRange([...data.dates, '2026-10-21'], 3, '2026-10-20'), {from:'2026-10-17',to:'2026-10-19'});
+  assert.deepEqual(presetRange(data.dates, 5, '2026-10-20'), {from:'2026-10-15',to:'2026-10-19'});
   assert.throws(() => presetRange(data.dates, 0.5));
   assert.throws(() => presetRange(data.dates, 366));
 });
 test('固定2026年，最近范围不跨入2025年', () => {
   const dates = ['2025-12-31','2026-01-02','2027-01-01'];
-  assert.deepEqual(presetRange(dates, 7), {from:'2026-01-01',to:'2026-01-02'});
+  assert.deepEqual(presetRange(dates, 7, '2026-01-03'), {from:'2026-01-01',to:'2026-01-02'});
   assert.deepEqual(presetRange(dates, 0), {from:'2026-01-02',to:'2026-01-02'});
   assert.deepEqual(query({...data, dates}).days, ['2026-01-02']);
   assert.throws(() => query(data, {from:'2025-12-31'}));
   assert.throws(() => presetRange(['2025-12-31'], 1));
+  assert.throws(() => presetRange(dates, 3, '2026-01-01'));
+  assert.deepEqual(presetRange(dates, 3, '2027-01-04'), {from:'2026-12-29',to:'2026-12-31'});
+});
+
+test('北京时间换日独立于手机和Mac所处时区', () => {
+  assert.equal(shanghaiToday(new Date('2026-10-19T15:59:59Z')), '2026-10-19');
+  assert.equal(shanghaiToday(new Date('2026-10-19T16:00:00Z')), '2026-10-20');
+});
+
+test('对比日期倒序包含缺失日期，跨月不漏天', () => {
+  assert.deepEqual(rangeDates('2026-09-30', '2026-10-02'), ['2026-10-02','2026-10-01','2026-09-30']);
+  assert.throws(() => rangeDates('2026-10-02', '2026-10-01'));
+  assert.throws(() => rangeDates('2026-02-29', '2026-03-01'));
+});
+
+test('星标优先且保留组内金额顺序，不改变数据或合计', () => {
+  const rows = query(data).rows;
+  const before = rows.map(row => row.id);
+  const marked = favoriteFirst(rows, new Set(['a', 'no-longer-present']));
+  assert.deepEqual(marked.map(row => row.id), ['a','b']);
+  assert.deepEqual(rows.map(row => row.id), before);
+  assert.equal(marked.reduce((sum, row) => sum + row.total, 0), query(data).total);
+  assert.deepEqual(favoriteFirst(rows, new Set(['a','b'])).map(row => row.id), before);
 });
 test('月日选择器正确处理二月和三十天月份', () => {
   assert.equal(daysInMonth(2), 28);
