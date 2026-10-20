@@ -20,6 +20,82 @@ test('姓名与单日边界同时过滤', () => {
   assert.equal(result.total, 12629);
   assert.equal(result.days.length, 1);
 });
+
+const pinyinData = {
+  dates: ['2026-10-17', '2026-10-18', '2026-10-19'],
+  // All names here are fictional fixtures, unrelated to the user's workbook.
+  drivers: [{ id: 'weng', name: '翁言冰' }, { id: 'wu', name: '吴海川' }],
+  records: [
+    { driverId: 'weng', date: '2026-10-17', amountCents: 100 },
+    { driverId: 'weng', date: '2026-10-18', amountCents: 0 },
+    { driverId: 'weng', date: '2026-10-19', amountCents: null },
+    { driverId: 'wu', date: '2026-10-19', amountCents: 900 },
+  ],
+};
+
+test('司机姓名支持全拼和首字母，大小写与部分匹配均可', () => {
+  const before = JSON.stringify(pinyinData);
+  for (const search of ['翁', '言冰', 'WENGYANBING', 'wengyanbing', 'WengYanBing', 'WYB', 'wyb', 'YANBING', 'yb']) {
+    const result = query(pinyinData, { search });
+    assert.deepEqual(result.rows.map(row => row.id), ['weng'], search);
+    assert.equal(result.total, 100);
+  }
+  assert.equal(JSON.stringify(pinyinData), before);
+});
+
+test('拼音搜索兼容空格、分隔符与全角字母', () => {
+  for (const search of [' W Y B ', 'WENG YAN BING', 'weng-yan-bing', "weng'yan'bing", 'ＷＹＢ']) {
+    assert.deepEqual(query(pinyinData, { search }).rows.map(row => row.id), ['weng'], search);
+  }
+});
+
+test('常见多音姓氏与复姓使用姓氏读音', () => {
+  for (const [name, full, initials] of [
+    ['单青川', 'SHANQINGCHUAN', 'SQC'],
+    ['曾青川', 'ZENGQINGCHUAN', 'ZQC'],
+    ['解青川', 'XIEQINGCHUAN', 'XQC'],
+    ['欧阳青川', 'OUYANGQINGCHUAN', 'OYQC'],
+  ]) {
+    const source = { dates: pinyinData.dates, drivers: [{ id: 'test', name }], records: [] };
+    for (const search of [full, initials]) assert.equal(query(source, { search }).rows.length, 1, search);
+  }
+});
+
+test('拼音中的 ü 支持键盘常用 v 写法', () => {
+  const source = { dates: pinyinData.dates, drivers: [{ id: 'test', name: '吕青川' }], records: [] };
+  for (const search of ['LVQINGCHUAN', 'LÜQINGCHUAN', 'LQC']) assert.equal(query(source, { search }).rows.length, 1, search);
+});
+
+test('空查询保留全部司机，无匹配或纯符号不会误匹配全部姓名', () => {
+  assert.equal(query(pinyinData, { search: '  ' }).rows.length, 2);
+  for (const search of ['ZZZZ', 'zzq', '-', "'", '0', 'WYB!']) assert.equal(query(pinyinData, { search }).rows.length, 0, search);
+  const source = { dates: pinyinData.dates, drivers: [{ id: 'test', name: 'Test-01' }], records: [] };
+  assert.equal(query(source, { search: 'TEST-01' }).rows.length, 1);
+  assert.equal(query(source, { search: '01' }).rows.length, 1);
+});
+
+test('拼音索引在姓名变更或数据刷新后更新，不使用旧司机姓名', () => {
+  const driver = { id: 'same-id', name: '翁言冰' };
+  const source = { dates: pinyinData.dates, drivers: [driver], records: [] };
+  assert.equal(query(source, { search: 'WYB' }).rows.length, 1);
+  driver.name = '吴海川';
+  assert.equal(query(source, { search: 'WHC' }).rows.length, 1);
+  assert.equal(query(source, { search: 'WYB' }).rows.length, 0);
+  source.drivers = [{ id: 'same-id', name: '翁言冰' }];
+  assert.equal(query(source, { search: 'WYB' }).rows.length, 1);
+  assert.equal(query(source, { search: 'WHC' }).rows.length, 0);
+});
+
+test('拼音筛选继续遵守日期范围、零值、空白与14天明细规则', () => {
+  const result = query(pinyinData, { search: 'WYB', from: '2026-10-18', to: '2026-10-19' });
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.total, 0);
+  assert.equal(result.rows[0].recorded, 1);
+  assert.equal(result.rows[0].missing, 1);
+  const detail = driverDetail(pinyinData, result.rows[0].id, { today: '2026-10-20' });
+  assert.equal(detail.daily.length, 14);
+  assert.equal(detail.total, 100);
+});
 test('起止日期都包含在查询范围', () => {
   assert.equal(query(data, {from:'2026-10-15', to:'2026-10-16'}).total, 400);
 });

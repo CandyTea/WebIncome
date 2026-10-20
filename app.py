@@ -249,7 +249,7 @@ def create_app(config=None):
 
     @application.get("/<path:asset>")
     def assets(asset):
-        if asset not in ("styles.css", "app.mjs", "query.mjs", "icon.svg", "admin.mjs", "portal.css"):
+        if asset not in ("styles.css", "app.mjs", "query.mjs", "pinyin-pro.mjs", "icon.svg", "admin.mjs", "portal.css"):
             return "Not found", 404
         return send_from_directory(ROOT / "dist", asset)
 

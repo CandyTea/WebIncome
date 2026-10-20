@@ -59,6 +59,15 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(self.client.get("/admin").status_code, 403)
         self.assertEqual(self.upload().status_code, 403)
 
+    def test_local_pinyin_module_is_served_without_exposing_private_files(self):
+        with self.client.get("/pinyin-pro.mjs") as response:
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(response.mimetype, ("text/javascript", "application/javascript"))
+            self.assertEqual(response.data, (ROOT / "dist" / "pinyin-pro.mjs").read_bytes())
+            self.assertIn("script-src 'self'", response.headers["Content-Security-Policy"])
+        for path in ("/.local/remote-sync.txt", "/../app.py", "/vendor/../../.env"):
+            self.assertEqual(self.client.get(path).status_code, 404)
+
     def test_csrf_is_required(self):
         self.login()
         self.assertEqual(self.upload(token=False).status_code, 400)

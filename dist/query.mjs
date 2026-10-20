@@ -1,4 +1,21 @@
+import { pinyin } from './pinyin-pro.mjs';
+
 export const QUERY_YEAR = 2026;
+const nameSearchCache = new WeakMap();
+
+function matchesName(driver, keyword) {
+  const name = driver.name.normalize('NFKC').toLocaleLowerCase('zh-CN');
+  if (!keyword || name.includes(keyword)) return true;
+  const letters = keyword.replaceAll('ü', 'v').replace(/[\s'’\-]+/g, '');
+  if (!/^[a-z]+$/.test(letters)) return false;
+  let keys = nameSearchCache.get(driver);
+  if (!keys || keys.name !== name) {
+    const syllables = pinyin(name, { toneType: 'none', type: 'array', surname: 'head', v: true });
+    keys = { name, full: syllables.join(''), initials: syllables.map(part => part[0]).join('') };
+    nameSearchCache.set(driver, keys);
+  }
+  return keys.full.includes(letters) || keys.initials.includes(letters);
+}
 
 export function yearDates(dates) {
   return dates.filter(day => day.startsWith(`${QUERY_YEAR}-`)).sort();
@@ -39,8 +56,8 @@ export function query(data, { search = '', from = '', to = '', sort = 'amount', 
   const completeWindow = warningDates.length === warningDays && warningDates.every(day => availableDates.has(day));
   const warningRange = warningDates.length ? {from: warningDates[warningDates.length - 1] < '2026-01-01' ? '2026-01-01' : warningDates[warningDates.length - 1], to: warningDates[0]} : null;
   const selectedDays = new Set(days);
-  const keyword = search.trim().toLocaleLowerCase('zh-CN');
-  const rows = data.drivers.filter(driver => driver.name.toLocaleLowerCase('zh-CN').includes(keyword)).map(driver => ({ ...driver, total: 0, recorded: 0, missing: 0, zeroDays: 0, daily: [], warningRecords: new Map(), hasZeroWarning: false }));
+  const keyword = search.normalize('NFKC').trim().toLocaleLowerCase('zh-CN');
+  const rows = data.drivers.filter(driver => matchesName(driver, keyword)).map(driver => ({ ...driver, total: 0, recorded: 0, missing: 0, zeroDays: 0, daily: [], warningRecords: new Map(), hasZeroWarning: false }));
   const indexed = new Map(rows.map(row => [row.id, row]));
   for (const record of data.records) {
     const driver = indexed.get(record.driverId);
