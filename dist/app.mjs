@@ -1,4 +1,4 @@
-import { query, presetRange, daysInMonth, makeDate, rangeDates, favoriteFirst, shanghaiToday, driverDetail } from './query.mjs';
+import { query, presetRange, daysInMonth, makeDate, rangeDates, favoriteFirst, shanghaiQueryDay, driverDetail } from './query.mjs';
 
 const $ = id => document.getElementById(id);
 const money = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -19,7 +19,7 @@ try {
   const stored = JSON.parse(localStorage.getItem(favoriteKey) || '[]');
   if (Array.isArray(stored)) favorites = new Set(stored.filter(id => typeof id === 'string'));
 } catch { /* Keep starring available even when browser storage is unavailable. */ }
-let rangeDay = shanghaiToday();
+let rangeDay = shanghaiQueryDay();
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -451,8 +451,11 @@ async function checkForUpdates() {
   if (refreshing || document.hidden) return;
   refreshing = true;
   try {
-    const today = shanghaiToday();
-    if (rangeDay !== today && data && activeDays > 0) applyRecent(activeDays);
+    const today = shanghaiQueryDay();
+    if (rangeDay !== today && data) {
+      if (activeDays > 0) applyRecent(activeDays);
+      else if ($('driver-dialog').open && selectedDriverId) updateDialog();
+    }
     rangeDay = today;
     const response = await fetch('/api/data-status', { cache: 'no-store' });
     if (!response.ok) return;

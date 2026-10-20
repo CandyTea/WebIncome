@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { query, presetRange, makeDate, daysInMonth, rangeDates, shanghaiToday, favoriteFirst, driverDetail } from '../dist/query.mjs';
+import { query, presetRange, makeDate, daysInMonth, rangeDates, shanghaiToday, shanghaiQueryDay, favoriteFirst, driverDetail } from '../dist/query.mjs';
 
 const data = {
   dates: ['2026-10-17', '2026-10-16', '2026-10-15'],
@@ -137,9 +137,23 @@ test('固定2026年，最近范围不跨入2025年', () => {
   assert.deepEqual(presetRange(dates, 3, '2027-01-04'), {from:'2026-12-29',to:'2026-12-31'});
 });
 
-test('北京时间换日独立于手机和Mac所处时区', () => {
+test('最近范围按北京时间15点切换，零点不提前切换且跨月正确', () => {
   assert.equal(shanghaiToday(new Date('2026-10-19T15:59:59Z')), '2026-10-19');
   assert.equal(shanghaiToday(new Date('2026-10-19T16:00:00Z')), '2026-10-20');
+  for (const [instant, from, to] of [
+    ['2026-10-21T06:59:59Z', '2026-10-17', '2026-10-19'],
+    ['2026-10-21T07:00:00Z', '2026-10-18', '2026-10-20'],
+    ['2026-10-20T15:59:59Z', '2026-10-17', '2026-10-19'],
+    ['2026-10-20T16:00:00Z', '2026-10-17', '2026-10-19'],
+    ['2026-11-01T06:59:59Z', '2026-10-28', '2026-10-30'],
+    ['2026-11-01T07:00:00Z', '2026-10-29', '2026-10-31'],
+  ]) {
+    const day = shanghaiQueryDay(new Date(instant));
+    assert.deepEqual(presetRange(data.dates, 3, day), { from, to }, instant);
+    const detail = driverDetail(data, 'a', { today: day });
+    assert.equal(detail.daily[0].date, to);
+    assert.equal(detail.daily.length, 14);
+  }
 });
 
 test('对比日期倒序包含缺失日期，跨月不漏天', () => {

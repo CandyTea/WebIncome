@@ -91,6 +91,11 @@ export function shanghaiToday(now = new Date()) {
   return new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+export function shanghaiQueryDay(now = new Date()) {
+  // The daily range advances at 15:00 Beijing time, after yesterday's update.
+  return shanghaiToday(new Date(now.getTime() - 15 * 60 * 60 * 1000));
+}
+
 export function rangeDates(from, to) {
   if (!validQueryDate(from) || !validQueryDate(to) || from > to) throw new Error('请选择有效的 2026 年日期范围。');
   const days = [];
@@ -107,7 +112,7 @@ export function favoriteFirst(rows, favorites) {
   return rows.filter(row => favorites.has(row.id)).concat(rows.filter(row => !favorites.has(row.id)));
 }
 
-export function presetRange(dates, count = 0, today = shanghaiToday()) {
+export function presetRange(dates, count = 0, today = shanghaiQueryDay()) {
   const sorted = yearDates(dates);
   if (!sorted.length) throw new Error('尚无 2026 年的流水数据。');
   if (!Number.isInteger(count) || count < 0 || count > 365) throw new Error('最近天数请输入 1 至 365 的整数。');
@@ -116,14 +121,14 @@ export function presetRange(dates, count = 0, today = shanghaiToday()) {
   if (!Number.isFinite(end.getTime())) throw new Error('当前日期无效。');
   end.setUTCDate(end.getUTCDate() - 1);
   const to = end.toISOString().slice(0, 10) > `${QUERY_YEAR}-12-31` ? `${QUERY_YEAR}-12-31` : end.toISOString().slice(0, 10);
-  if (to < `${QUERY_YEAR}-01-01`) throw new Error('2026 年尚无已结束的日期，请自选查询日期。');
+  if (to < `${QUERY_YEAR}-01-01`) throw new Error('2026 年尚无已到展示时间的日期，请自选查询日期。');
   const start = new Date(`${to}T00:00:00Z`);
   start.setUTCDate(start.getUTCDate() - count + 1);
   const from = start.toISOString().slice(0, 10);
   return { from: from < '2026-01-01' ? '2026-01-01' : from, to };
 }
 
-export function driverDetail(data, driverId, { warningDays = 7, today = shanghaiToday() } = {}) {
+export function driverDetail(data, driverId, { warningDays = 7, today = shanghaiQueryDay() } = {}) {
   const identity = data.drivers.find(driver => driver.id === driverId);
   if (!identity) return null;
   const range = presetRange(data.dates, 14, today);
