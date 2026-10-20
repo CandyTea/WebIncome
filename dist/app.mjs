@@ -376,10 +376,22 @@ async function load(initial = true) {
 }
 
 $('filters').addEventListener('submit', event => event.preventDefault());
+function updateSearchHeight() {
+  document.documentElement.style.setProperty('--driver-search-height', `${$('driver-search').getBoundingClientRect().height}px`);
+}
+updateSearchHeight();
+new ResizeObserver(updateSearchHeight).observe($('driver-search'));
 $('driver-list').addEventListener('scroll', () => {
   $('comparison-header-viewport').scrollLeft = $('driver-list').scrollLeft;
 }, { passive: true });
-$('search').addEventListener('input', render);
+$('search').addEventListener('input', () => {
+  const resultsAboveSearch = $('results').getBoundingClientRect().top < $('driver-search').getBoundingClientRect().bottom;
+  render();
+  if (resultsAboveSearch && !$('results').hidden) {
+    const target = $('comparison-frame').hidden ? $('empty') : $('comparison-frame');
+    target.scrollIntoView({ block: 'start' });
+  }
+});
 $('sort').addEventListener('change', render);
 for (const prefix of ['from', 'to']) {
   $(`${prefix}-month`).addEventListener('change', () => { updateDayOptions(prefix); activeDays = null; render(); });
